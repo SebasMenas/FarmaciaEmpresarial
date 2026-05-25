@@ -4,7 +4,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 
 # Importacion de Vistas(Views)
-from Views import ListaDocentesWidget,ListaCitasWidget # Importación lista docentes
+from Views import * # Importación lista docentes
 
 
 # Importación de Formularios(Forms) 
@@ -66,8 +66,17 @@ class VentanaPrincipal(QMainWindow):
         self.view_cita = ListaCitasWidget()
         self.content_area.addWidget(self.view_cita)
         
-        # Indice 6: Ver Solicitudes
-        #self.view_soli =
+        # Índice 6: Nueva vista de lista de docentes
+        self.lista_producto = ListaProductosWidget()
+        self.content_area.addWidget(self.lista_producto)
+
+        # Índice 7: Nueva vista de lista de docentes
+        self.lista_noti = ListaNotiWidget()
+        self.content_area.addWidget(self.lista_noti)
+        
+        # Infice 8:
+        #self.lista_lote = ControlCalidadLotesWidget()
+        #self.content_area.addWidget(self.lista_lote)
 
         # Indice 
 
@@ -86,31 +95,36 @@ class VentanaPrincipal(QMainWindow):
         rol = self.usuario.rol.upper()
 
         if rol == "ADMIN":
-            btn_add_docente = QPushButton("Registrar Docente")
+            btn_add_docente = QPushButton("Registrar Empleado")
             btn_add_docente.clicked.connect(lambda: self.content_area.setCurrentIndex(1))
             self.sidebar.addWidget(btn_add_docente)
 
-            btn_agendar = QPushButton("Agendar Cita")
+            btn_agendar = QPushButton("Solicitar Productos")
             btn_agendar.clicked.connect(lambda: self.content_area.setCurrentIndex(2))
             self.sidebar.addWidget(btn_agendar)
 
-            btn_ver_docentes = QPushButton("Ver Docentes")
+            btn_ver_productos = QPushButton("Ver Almacenamiento")
+            btn_ver_productos.clicked.connect(self.cambiar_a_lista_productos)
+            self.sidebar.addWidget(btn_ver_productos)
+            
+            btn_ver_noti = QPushButton("Notificaciones")
+            btn_ver_noti.clicked.connect(self.cambiar_a_lista_noti)
+            self.sidebar.addWidget(btn_ver_noti)
+
+            btn_ver_lote = QPushButton("Notificaciones")
+            btn_ver_lote.clicked.connect(lambda: self.content_area.setCurrentIndex(8))
+            self.sidebar.addWidget(btn_ver_lote)
+
+
+        elif rol == "AXM":
+            btn_ver_docentes = QPushButton("Ver Almacenamiento")
             btn_ver_docentes.clicked.connect(self.cambiar_a_lista_docentes)
             self.sidebar.addWidget(btn_ver_docentes)
-
-            btn_AgUsr = QPushButton("Agregar Usuario")
-            btn_AgUsr.clicked.connect(lambda: self.content_area.setCurrentIndex(4))
-            self.sidebar.addWidget(btn_AgUsr)
-
-            btn_citas = QPushButton("Ver Citas")
-            btn_citas.clicked.connect(self.cambiar_a_lista_citas)
-            self.sidebar.addWidget(btn_citas)
-            
-
-        elif rol == "PACIENTE":
-            btn_agendar = QPushButton("Agendar Cita")
+            btn_agendar = QPushButton("Caducidad")
             btn_agendar.clicked.connect(lambda: self.content_area.setCurrentIndex(2))
             self.sidebar.addWidget(btn_agendar)
+
+
 
         elif rol in ["DOCENTE", "DOCTOR"]:
             lbl_info = QLabel("\n(Módulo de revisión de agenda\nen construcción)")
@@ -122,6 +136,15 @@ class VentanaPrincipal(QMainWindow):
     def cambiar_a_lista_docentes(self):
         self.lista_docentes.actualizar_tabla()
         self.content_area.setCurrentIndex(3)
+
+    def cambiar_a_lista_productos(self):
+        self.lista_producto.actualizar_tabla()
+        self.content_area.setCurrentIndex(6)
+
+    def cambiar_a_lista_noti(self):
+        self.lista_noti.actualizar_tabla()
+        self.content_area.setCurrentIndex(7)
+
 
     def cambiar_a_lista_citas(self):
         self.view_cita.actualizar_tabla()

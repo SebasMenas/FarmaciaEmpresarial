@@ -23,16 +23,15 @@ class FormularioDocente(QWidget):
         
         self.cbx_sexo = QComboBox()
         self.cbx_sexo.addItems(["Hombre", "Mujer", "N/A"])
+        self.cbx_rol = QComboBox()
+        self.cbx_rol.addItems(["Auxiliar Mayor","Auxiliar", "Tecnico"])
 
         # Añadir al layout
         layout.addRow("Usuario (Login):", self.txt_username)
         layout.addRow("Contraseña:", self.txt_password)
-        layout.addRow("Nombre:", self.txt_nombre)
-        layout.addRow("Apellidos:", self.txt_apellidos)
-        layout.addRow("RUT:", self.txt_rut)
-        layout.addRow("Sexo:", self.cbx_sexo)
+        layout.addRow("Rol:", self.cbx_rol)
 
-        self.btn_guardar = QPushButton("Registrar Docente")
+        self.btn_guardar = QPushButton("Registrar Empleado")
         self.btn_guardar.clicked.connect(self.guardar_docente)
         layout.addRow(self.btn_guardar)
 

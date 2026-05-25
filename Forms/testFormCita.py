@@ -30,17 +30,14 @@ class FormularioCita(QWidget):
         self.time_hora = QTimeEdit()
         self.time_hora.setDisplayFormat("HH:mm")
 
-        self.cbx_estado = QComboBox()
-        self.cbx_estado.addItems(["Activa", "Cancelada", "Ausente", "Concluida"])
+        self.cbx_Lab = QComboBox()
+        self.cbx_Lab.addItems(["Laboratirio Maquehue", "Laboratorio Prat", "Drogeria Santa Elena", "Laboratorio Alejandro"])
 
         # 🔹 Agregar al layout
-        if not(_tipoU == 3):
-            layout.addRow("ID Usuario:", self.spn_usuario_id)
-        layout.addRow("Docente:", self.txt_docente)
-        layout.addRow("Asunto:", self.txt_asunto)
-        layout.addRow("Fecha:", self.date_fecha)
-        layout.addRow("Hora:", self.time_hora)
-        layout.addRow("Estado:", self.cbx_estado)
+          
+        layout.addRow("Producto:", self.txt_docente)
+        layout.addRow("Cantidad/lote:", self.spn_usuario_id)
+        layout.addRow("Laboratorio:", self.cbx_Lab)
 
         # 🔹 Botón
         self.btn_guardar = QPushButton("Registrar Cita")

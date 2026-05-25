@@ -34,9 +34,9 @@ def inicializar_db():
     if cursor.fetchone()[0] == 0:
         usuarios_prueba = [
             ('admin', '1234', 'Admin', 'Sistema', '00000000-0', 'N/A', 'ADMIN'),
-            ('dlopez', 'doc123', 'Dra. María', 'López', '11111111-1', 'Mujer', 'DOCENTE'),
-            ('pperez', 'doc456', 'Dr. Pedro', 'Pérez', '22222222-2', 'Hombre', 'DOCENTE'),
-            ('dyimi', 'doc789', 'Dr. Yimi', 'Desconocido', '33333333-3', 'Hombre', 'DOCENTE'),
+            ('axm', '1234', 'Dra. María', 'López', '11111111-1', 'Mujer', 'AXM'),
+            ('ax', '1234', 'Dr. Pedro', 'Pérez', '22222222-2', 'Hombre', 'AX'),
+            ('tec', '1234', 'Dr. Yimi', 'Desconocido', '33333333-3', 'Hombre', 'TEC'),
             ('user1', 'pass1', 'Juan', 'Doe', '44444444-4', 'Hombre', 'PACIENTE'),
             ('user2', 'pass2', 'Maria', 'Garcia', '55555555-5', 'Mujer', 'PACIENTE')
         ]
