@@ -4,7 +4,7 @@ import jwt
 from app.core.security import SECRET_KEY, ALGORITHM
 from app.models.entidades import RolUsuario
 
-# Instancia que FastAPI usa para extraer el token del header "Authorization: Bearer ..."
+# Instancia que FastAPI usa para extraer el token del header
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
 # Se inyecta oauth2_scheme como dependencia de token

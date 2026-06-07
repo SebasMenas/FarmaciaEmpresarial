@@ -15,6 +15,7 @@ class CalendarioView(QWidget):
         self.pacientes_ids = []
         
         self.inicializar_ui()
+        
 
         # Carga de datos inicial
         if self.rol == "DOCTOR":
@@ -25,27 +26,113 @@ class CalendarioView(QWidget):
         layout_principal = QHBoxLayout(self)
 
         # ==========================================
-        # PANEL IZQUIERDO: Calendario y Tabla
+        # PANEL IZQUIERDO
         # ==========================================
         panel_izquierdo = QVBoxLayout()
-        
+
         self.calendario = QCalendarWidget()
         self.calendario.setGridVisible(True)
-        self.calendario.clicked.connect(self.actualizar_tabla_citas) 
-
-        self.lbl_fecha = QLabel("Citas para el día seleccionado:")
-        self.lbl_fecha.setStyleSheet("font-weight: bold; font-size: 14px;")
-
-        self.tabla = QTableWidget()
-        self.tabla.setColumnCount(5) # Añadimos columna para "Acción"
-        self.tabla.setHorizontalHeaderLabels(["Hora", "Asunto", "Doctor", "Paciente", "Acción"])
-        self.tabla.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
 
         panel_izquierdo.addWidget(self.calendario)
-        panel_izquierdo.addWidget(self.lbl_fecha)
-        panel_izquierdo.addWidget(self.tabla)
 
-        layout_principal.addLayout(panel_izquierdo, 2)
+        layout_principal.addLayout(panel_izquierdo, 1)
+
+        # ==========================================
+        # PANEL DERECHO
+        # ==========================================
+        panel_derecho = QVBoxLayout()
+
+        # ---- Tabla de tareas ----
+        grupo_tareas = QGroupBox("Tareas del Personal")
+        layout_tareas = QVBoxLayout()
+
+        self.tabla_tareas = QTableWidget()
+        self.tabla_tareas.setColumnCount(4)
+        self.tabla_tareas.setHorizontalHeaderLabels([
+            "Empleado",
+            "Tareas Asignadas",
+            "Fecha",
+            "CheckList"
+        ])
+
+        self.tabla_tareas.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Stretch
+        )
+
+        layout_tareas.addWidget(self.tabla_tareas)
+        grupo_tareas.setLayout(layout_tareas)
+
+        # ---- Tabla de inventario ----
+        grupo_productos = QGroupBox("Inventario y Trazabilidad")
+        layout_productos = QVBoxLayout()
+
+        self.tabla_productos = QTableWidget()
+        self.tabla_productos.setColumnCount(7)
+        self.tabla_productos.setHorizontalHeaderLabels([
+            "Nombre Producto",
+            "Laboratorio",
+            "Temperatura °C",
+            "Fecha Caducidad",
+            "Estado",
+            "Cod. Trazabilidad",
+            "Stock"
+        ])
+
+        self.tabla_productos.horizontalHeader().setSectionResizeMode(
+            QHeaderView.ResizeMode.Stretch
+        )
+
+        layout_productos.addWidget(self.tabla_productos)
+        grupo_productos.setLayout(layout_productos)
+
+        panel_derecho.addWidget(grupo_tareas)
+        panel_derecho.addWidget(grupo_productos)
+
+        layout_principal.addLayout(panel_derecho, 3)
+        
+        # Datos de prueba tabla tareas
+        self.tabla_tareas.setRowCount(3)
+
+        self.tabla_tareas.setItem(0, 0, QTableWidgetItem("Juan Pérez"))
+        self.tabla_tareas.setItem(0, 1, QTableWidgetItem("Control de stock"))
+        self.tabla_tareas.setItem(0, 2, QTableWidgetItem("2026-06-07"))
+        self.tabla_tareas.setItem(0, 3, QTableWidgetItem("✓"))
+
+        self.tabla_tareas.setItem(1, 0, QTableWidgetItem("Ana Soto"))
+        self.tabla_tareas.setItem(1, 1, QTableWidgetItem("Recepción"))
+        self.tabla_tareas.setItem(1, 2, QTableWidgetItem("2026-06-07"))
+        self.tabla_tareas.setItem(1, 3, QTableWidgetItem("✗"))
+
+        self.tabla_tareas.setItem(2, 0, QTableWidgetItem("Carlos Díaz"))
+        self.tabla_tareas.setItem(2, 1, QTableWidgetItem("Inventario"))
+        self.tabla_tareas.setItem(2, 2, QTableWidgetItem("2026-06-08"))
+        self.tabla_tareas.setItem(2, 3, QTableWidgetItem("✓"))    
+
+        self.tabla_productos.setRowCount(3)
+
+        self.tabla_productos.setItem(0, 0, QTableWidgetItem("Vacuna A"))
+        self.tabla_productos.setItem(0, 1, QTableWidgetItem("Pfizer"))
+        self.tabla_productos.setItem(0, 2, QTableWidgetItem("4"))
+        self.tabla_productos.setItem(0, 3, QTableWidgetItem("2027-01-15"))
+        self.tabla_productos.setItem(0, 4, QTableWidgetItem("Disponible"))
+        self.tabla_productos.setItem(0, 5, QTableWidgetItem("TRZ001"))
+        self.tabla_productos.setItem(0, 6, QTableWidgetItem("120"))
+
+        self.tabla_productos.setItem(1, 0, QTableWidgetItem("Insulina"))
+        self.tabla_productos.setItem(1, 1, QTableWidgetItem("Novo Nordisk"))
+        self.tabla_productos.setItem(1, 2, QTableWidgetItem("3"))
+        self.tabla_productos.setItem(1, 3, QTableWidgetItem("2026-10-20"))
+        self.tabla_productos.setItem(1, 4, QTableWidgetItem("Disponible"))
+        self.tabla_productos.setItem(1, 5, QTableWidgetItem("TRZ002"))
+        self.tabla_productos.setItem(1, 6, QTableWidgetItem("50"))
+
+        self.tabla_productos.setItem(2, 0, QTableWidgetItem("Antibiótico X"))
+        self.tabla_productos.setItem(2, 1, QTableWidgetItem("Bayer"))
+        self.tabla_productos.setItem(2, 2, QTableWidgetItem("22"))
+        self.tabla_productos.setItem(2, 3, QTableWidgetItem("2026-07-30"))
+        self.tabla_productos.setItem(2, 4, QTableWidgetItem("Próximo a vencer"))
+        self.tabla_productos.setItem(2, 5, QTableWidgetItem("TRZ003"))
+        self.tabla_productos.setItem(2, 6, QTableWidgetItem("15"))    
 
         # ==========================================
         # PANEL DERECHO: Formulario (Doctor/Paciente)
@@ -135,10 +222,10 @@ class CalendarioView(QWidget):
             # Ajustamos las columnas según el rol
             if self.rol == "PACIENTE":
                 self.tabla.setColumnCount(2)
-                self.tabla.setHorizontalHeaderLabels(["Hora", "Asunto"])
+                self.tabla.setHorizontalHeaderLabels(["Empleado", "Tarea Asignada"])
             else:
                 self.tabla.setColumnCount(5)
-                self.tabla.setHorizontalHeaderLabels(["Hora", "Asunto", "Doctor", "Paciente", "Acción"])
+                self.tabla.setHorizontalHeaderLabels(["Hora", "Tarea Asignada", "Empleado", "Paciente", "Acción"])
 
             for i, cita in enumerate(citas):
                 hora = cita["fecha_hora"].split("T")[1][:5]
