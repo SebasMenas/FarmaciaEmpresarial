@@ -30,3 +30,10 @@ class Security:
         # Genera el JWT uniendo Header, Payload y Firma
         token_jwt = jwt.encode(a_copiar, SECRET_KEY, algorithm=ALGORITHM)
         return token_jwt
+    
+    @staticmethod
+    def obtener_password_hash(password: str) -> str:
+
+        salt = bcrypt.gensalt()
+        hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
+        return hashed.decode('utf-8')

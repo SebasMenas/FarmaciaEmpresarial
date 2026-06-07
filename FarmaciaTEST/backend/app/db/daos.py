@@ -11,6 +11,33 @@ class UsuarioDAO:
     def listar_empleados(db: Session):
         """Retorna todos los empleados registrados para la pantalla de Admin"""
         return db.query(Usuario).all()
+    
+    @staticmethod
+    def crear_empleado(
+        db: Session, 
+        username: str, 
+        password_hash: str, 
+        nombre: str,
+        apellidos: str,
+        rut: str,
+        rol: str, 
+        credencial: str | None = None,
+        activo: bool = True
+    ) -> Usuario:
+        nuevo_usuario = Usuario(
+            username=username,
+            password_hash=password_hash,
+            nombre=nombre,
+            apellidos=apellidos,
+            rut=rut,
+            rol=rol,
+            credencial=credencial,
+            activo=activo
+        )
+        db.add(nuevo_usuario)
+        db.commit()
+        db.refresh(nuevo_usuario)
+        return nuevo_usuario
 
 class InventarioDAO:
     @staticmethod
