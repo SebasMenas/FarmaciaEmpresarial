@@ -1,10 +1,8 @@
 from fastapi import FastAPI
 from app.db.database import engine, Base
-from app.models.entidades import Usuario, Laboratorio, Producto, Lote # metadata para que SQLAlchemy reconozca las tablas a construir
-from app.api import auth, monitoreo, test_endpoints
+from app.models.entidades import Usuario, Laboratorio, Producto, Lote
+from app.api import auth, monitoreo, test_endpoints, operaciones
 
-
-# Fuerza la creación de esquemas y tablas si no existen en Neon
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
@@ -13,11 +11,11 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Rutas
 app.include_router(auth.router, prefix="/api")
 app.include_router(monitoreo.router, prefix="/api")
-app.include_router(test_endpoints.router, prefix ="/api")
+app.include_router(operaciones.router, prefix="/api")
+app.include_router(test_endpoints.router, prefix="/api")
 
 @app.get("/")
 def raiz():
-    return {"status": "Servidor Backend Operativo"}
+    return {"status": "Servidor Backend Operativo - Sistema Farmacias Sol"}

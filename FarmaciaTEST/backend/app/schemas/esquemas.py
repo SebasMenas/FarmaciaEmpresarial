@@ -3,7 +3,7 @@ from datetime import datetime, date
 from typing import Optional
 from app.models.entidades import RolUsuario, TipoProducto, IndicacionAmbiental, EstadoLote
 
-# Esquemas de Autenticación
+# Esquemas de Autenticacion
 class LoginRequest(BaseModel):
     username: str
     password: str

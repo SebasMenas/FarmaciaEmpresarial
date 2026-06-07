@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 from app.models.entidades import Laboratorio, Producto, Lote, EstadoLote
-from ..test.generador_datos import GeneradorDatos
+from app.testing.generador_datos import GeneradorDatos
 import random
 from datetime import date, timedelta
 
@@ -48,7 +48,7 @@ class MockLaboratorio:
             estado=EstadoLote.DISPONIBLE if bool(lab.certificado) else EstadoLote.RETIRADO
         )
         
-        # Aplicación de la regla de trazabilidad sanitaria normativa de Fase 1
+        # Aplicacion de la regla de trazabilidad sanitaria normativa de Fase 1
         if not bool(lab.certificado):
             # Si el laboratorio no cumple, simulamos el aborto transaccional
             return {"exito": False, "detalle": f"Transacción abortada: {lab.nombre} no posee certificación sanitaria."}

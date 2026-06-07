@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from app.db.database import get_db
-from ..test.mock_laboratorio import MockLaboratorio
-from ..test.mock_cliente import MockCliente
+from app.testing.mock_laboratorio import MockLaboratorio
+from app.testing.mock_cliente import MockCliente
 
 router = APIRouter(prefix="/test", tags=["Mocks de Simulación Externa"])
 
