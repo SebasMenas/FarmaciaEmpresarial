@@ -19,7 +19,7 @@ from PySide6.QtCharts import (
 from PySide6.QtCore import Qt
 
 
-class SupervisorView(QWidget):
+class auxMayor(QWidget):
 
     def __init__(self):
         super().__init__()
@@ -394,7 +394,7 @@ if __name__ == "__main__":
 
     app = QApplication(sys.argv)
 
-    ventana = SupervisorView()
+    ventana = auxMayor()
     ventana.show()
 
     sys.exit(app.exec())

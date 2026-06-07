@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (
 )
 
 
-class GestionView(QWidget):
+class AdminView(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Gestión de Personal e Inventario")
@@ -249,7 +249,7 @@ if __name__ == "__main__":
 
     app = QApplication(sys.argv)
 
-    ventana = GestionView()
+    ventana = AdminView()
     ventana.show()
 
     sys.exit(app.exec())

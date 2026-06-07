@@ -1,6 +1,14 @@
 from PySide6.QtWidgets import QMainWindow, QVBoxLayout, QPushButton, QLabel, QWidget, QStackedWidget
 from PySide6.QtCore import Qt
 from api.cliente_auth import ClienteAuth
+from views.admin_view import AdminView
+from views.axD_view import AuxilarDiplo
+from views.axMD_view import auxMayor
+from views.tecnico_view import OrdenesView
+#from axD_view
+#from axMD_view
+#from tecnico_view
+
 
 class VentanaPrincipal(QMainWindow):
     def __init__(self, username: str, rol: str):
@@ -32,16 +40,17 @@ class VentanaPrincipal(QMainWindow):
     def configurar_vistas_por_rol(self, rol: str):
         """Funcion para inyeccion futuras de vistas reales"""
         if rol == "ADMIN":
-            vista_admin = QLabel("Renderizando Pantalla Admin (Gestión de Personal/Inventario)")
+            vista_admin = AdminView()
             self.stack_vistas.addWidget(vista_admin)
+            #self.stack_vistas.addWidget(AdminView)
         elif rol == "AUX_MAYOR":
-            vista_aux_mayor = QLabel("Renderizando Pantalla Auxiliar Mayor (Almacenamiento Ambiental)")
+            vista_aux_mayor = auxMayor()
             self.stack_vistas.addWidget(vista_aux_mayor)
         elif rol == "AUX_DIPLOMADO":
-            vista_aux_dip = QLabel("Renderizando Pantalla Auxiliar Diplomado (Manufactura Magistral)")
+            vista_aux_dip = AuxilarDiplo()
             self.stack_vistas.addWidget(vista_aux_dip)
         elif rol == "TECNICO":
-            vista_tecnico = QLabel("Renderizando Pantalla Técnico (Venta POS)")
+            vista_tecnico = OrdenesView()
             self.stack_vistas.addWidget(vista_tecnico)
 
     def procesar_logout(self):

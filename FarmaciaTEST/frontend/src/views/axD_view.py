@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (
 )
 
 
-class RecetasMagistralesView(QWidget):
+class AuxilarDiplo(QWidget):
 
     def __init__(self):
         super().__init__()
@@ -367,7 +367,7 @@ if __name__ == "__main__":
 
     app = QApplication(sys.argv)
 
-    ventana = RecetasMagistralesView()
+    ventana = AuxilarDiplo()
     ventana.show()
 
     sys.exit(app.exec())
