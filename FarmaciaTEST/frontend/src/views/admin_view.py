@@ -3,7 +3,7 @@ from PySide6.QtWidgets import (
     QTableWidget, QTableWidgetItem,
     QPushButton, QLabel, QLineEdit,
     QComboBox, QGroupBox,
-    QHeaderView,QMessageBox
+    QHeaderView, QMessageBox
 )
 from api.AdminConsultas import ClienteMonitoreo
 
@@ -182,113 +182,48 @@ class AdminView(QWidget):
         layout_principal.addLayout(fila_superior, 2)
         layout_principal.addLayout(fila_inferior, 1)
 
-       
-
     def cargar_empleados(self):
-
         res = ClienteMonitoreo.obtener_empleados()
 
         if not res["exito"]:
-            QMessageBox.critical(
-                self,
-                "Error",
-                res["error"]
-            )
+            QMessageBox.critical(self, "Error", res["error"])
             return
 
         empleados = res["datos"]
-
-        self.tabla_empleados.setRowCount(
-            len(empleados)
-        )
+        self.tabla_empleados.setRowCount(len(empleados))
 
         for fila, empleado in enumerate(empleados):
-
-            self.tabla_empleados.setItem(
-                fila,
-                0,
-                QTableWidgetItem(
-                    empleado["nombre"]
-                )
-            )
-
-            self.tabla_empleados.setItem(
-                fila,
-                1,
-                QTableWidgetItem(
-                    empleado["apellidos"]
-                )
-            )
-
-            self.tabla_empleados.setItem(
-                fila,
-                2,
-                QTableWidgetItem(
-                    empleado["rol"]
-                )
-            )
+            # Casteo explícito a string para evitar TypeErrors con valores nulos
+            self.tabla_empleados.setItem(fila, 0, QTableWidgetItem(str(empleado.get("nombre", ""))))
+            self.tabla_empleados.setItem(fila, 1, QTableWidgetItem(str(empleado.get("apellidos", ""))))
+            self.tabla_empleados.setItem(fila, 2, QTableWidgetItem(str(empleado.get("rol", ""))))
 
             boton = QPushButton("Citar")
+            self.tabla_empleados.setCellWidget(fila, 3, boton)
 
-            self.tabla_empleados.setCellWidget(
-                fila,
-                3,
-                boton
-            )
     def cargar_productos(self):
-
         res = ClienteMonitoreo.obtener_almacenamiento()
 
         if not res["exito"]:
+            # Opcional: Mostrar error si falla la carga de productos
+            # QMessageBox.warning(self, "Advertencia", res.get("error", "Error desconocido"))
             return
 
         productos = res["datos"]
-
-        self.tabla_productos.setRowCount(
-            len(productos)
-        )
+        self.tabla_productos.setRowCount(len(productos))
 
         for fila, producto in enumerate(productos):
-
-            self.tabla_productos.setItem(
-                fila,
-                0,
-                QTableWidgetItem(
-                    producto["laboratorio"]
-                )
-            )
-
-            self.tabla_productos.setItem(
-                fila,
-                1,
-                QTableWidgetItem(
-                    producto["codigo_lote"]
-                )
-            )
-
-            self.tabla_productos.setItem(
-                fila,
-                2,
-                QTableWidgetItem(
-                    producto["codigo_trazabilidad"]
-                )
-            )
-
-            self.tabla_productos.setItem(
-                fila,
-                3,
-                QTableWidgetItem(
-                    producto["fecha_ingreso"]
-                )
-            )
+            # 1. Extracción correcta del diccionario anidado 'laboratorio'
+            nombre_lab = producto.get("laboratorio", {}).get("nombre", "Desconocido")
+            
+            # 2. Casteo explícito a cadena de texto para cada columna
+            self.tabla_productos.setItem(fila, 0, QTableWidgetItem(str(nombre_lab)))
+            self.tabla_productos.setItem(fila, 1, QTableWidgetItem(str(producto.get("codigo_lote", ""))))
+            self.tabla_productos.setItem(fila, 2, QTableWidgetItem(str(producto.get("codigo_trazabilidad", ""))))
+            self.tabla_productos.setItem(fila, 3, QTableWidgetItem(str(producto.get("fecha_ingreso", ""))))
 
             boton = QPushButton("Eliminar")
-
-            self.tabla_productos.setCellWidget(
-                fila,
-                4,
-                boton
-            )
+            self.tabla_productos.setCellWidget(fila, 4, boton)
 
 if __name__ == "__main__":
     import sys
