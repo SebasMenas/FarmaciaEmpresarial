@@ -19,7 +19,7 @@ class ClienteAuth:
         datos = {"username": username, "password": password}
         
         try:
-            respuesta = requests.post(url, data=datos, timeout=5)
+            respuesta = requests.post(url, data=datos, timeout=30)
             
             if respuesta.status_code == 200:
                 datos_json = respuesta.json()

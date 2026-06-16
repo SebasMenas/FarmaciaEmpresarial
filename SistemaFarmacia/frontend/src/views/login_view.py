@@ -29,6 +29,9 @@ class LoginWindow(QWidget):
         self.setLayout(layout)
         
         self.btn_login.clicked.connect(self.procesar_login)
+        self.txt_usuario.returnPressed.connect(self.procesar_login)
+        self.txt_password.returnPressed.connect(self.procesar_login)
+  
 
     def procesar_login(self):
         usuario = self.txt_usuario.text().strip()
