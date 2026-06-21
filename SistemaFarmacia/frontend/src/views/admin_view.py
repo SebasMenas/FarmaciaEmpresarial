@@ -6,16 +6,23 @@ from PySide6.QtWidgets import (
     QHeaderView, QMessageBox
 )
 from api.AdminConsultas import ClienteMonitoreo
+from forms.empleados_form import RegistroEmpleadoView
+from forms.empEdit_form import EditarEmpleadoView
 
 class AdminView(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Gestión de Personal e Inventario")
-        self.resize(1400, 800) 
+        self.resize(1400, 800)
+
         self.inicializar_ui()
+
+        self.btn_nuevo_empleado.clicked.connect(
+            self.abrir_registro_empleado
+        )
+        
         self.cargar_empleados()
         self.cargar_productos()
-
     def inicializar_ui(self):
         layout_principal = QVBoxLayout(self)
 
@@ -80,34 +87,14 @@ class AdminView(QWidget):
         # ----------------------------------------
         # FORMULARIO EMPLEADO
         # ----------------------------------------
-        grupo_empleado = QGroupBox("Registrar Empleado")
+        grupo_empleado = QGroupBox("Empleados")
         layout_empleado = QVBoxLayout()
 
-        self.input_nombre = QLineEdit()
-        self.input_nombre.setPlaceholderText("Nombre")
+        self.btn_nuevo_empleado = QPushButton("Nuevo Empleado")
 
-        self.input_apellido = QLineEdit()
-        self.input_apellido.setPlaceholderText("Apellido")
-
-        self.cmb_rol = QComboBox()
-        self.cmb_rol.addItems([
-            "Auxiliar Diplomado Mayor",
-            "Auxiliar Diplamado",
-            "Técnico Farmaceutico"
-        ])
-
-        self.btn_agregar_empleado = QPushButton("Agregar Empleado")
-
-        layout_empleado.addWidget(QLabel("Nombre"))
-        layout_empleado.addWidget(self.input_nombre)
-
-        layout_empleado.addWidget(QLabel("Apellido"))
-        layout_empleado.addWidget(self.input_apellido)
-
-        layout_empleado.addWidget(QLabel("Rol"))
-        layout_empleado.addWidget(self.cmb_rol)
-
-        layout_empleado.addWidget(self.btn_agregar_empleado)
+        layout_empleado.addStretch()
+        layout_empleado.addWidget(self.btn_nuevo_empleado)
+        layout_empleado.addStretch()
 
         grupo_empleado.setLayout(layout_empleado)
 
@@ -189,7 +176,8 @@ class AdminView(QWidget):
             QMessageBox.critical(self, "Error", res["error"])
             return
 
-        empleados = res["datos"]
+        self.empleados = res["datos"]
+        empleados = self.empleados
         self.tabla_empleados.setRowCount(len(empleados))
 
         for fila, empleado in enumerate(empleados):
@@ -198,7 +186,12 @@ class AdminView(QWidget):
             self.tabla_empleados.setItem(fila, 1, QTableWidgetItem(str(empleado.get("apellidos", ""))))
             self.tabla_empleados.setItem(fila, 2, QTableWidgetItem(str(empleado.get("rol", ""))))
 
-            boton = QPushButton("Citar")
+            boton = QPushButton("Editar")
+
+            boton.clicked.connect(
+                lambda _, empleado=empleado:
+                    self.abrir_edicion(empleado)
+            )
             self.tabla_empleados.setCellWidget(fila, 3, boton)
 
     def cargar_productos(self):
@@ -224,6 +217,17 @@ class AdminView(QWidget):
 
             boton = QPushButton("Eliminar")
             self.tabla_productos.setCellWidget(fila, 4, boton)
+    def abrir_registro_empleado(self):
+        self.ventana_registro = RegistroEmpleadoView()
+        self.ventana_registro.show()
+
+    def abrir_edicion(self, empleado):
+
+        self.ventana_edicion = EditarEmpleadoView(
+            empleado
+        )
+
+        self.ventana_edicion.show()
 
 if __name__ == "__main__":
     import sys

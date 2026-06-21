@@ -40,7 +40,42 @@ class ClienteMonitoreo:
                 "exito": False,
                 "error": str(e)
             }
+    @staticmethod
+    def obtener_UnEmpleado(id_empleado):
 
+        respuesta = requests.get(
+            f"{API_BASE_URL}/empleados/{id_empleado}",
+            headers=ClienteAuth.obtener_headers()
+        )
+        if respuesta.status_code == 200:
+                return {
+                    "exito": True,
+                    "datos": respuesta.json()
+                }
+
+        return {
+                "exito": False,
+                "error": respuesta.text
+            }
+
+    @staticmethod
+    def editar_empleado(id_empleado, datos):
+
+        respuesta = requests.put(
+            f"{API_BASE_URL}/admin/empleados/{id_empleado}",
+            json=datos,
+            headers=ClienteAuth.obtener_headers()
+        )
+        if respuesta.status_code == 200:
+                return {
+                    "exito": True,
+                    "datos": respuesta.json()
+                }
+
+        return {
+                "exito": False,
+                "error": respuesta.text
+            }
 
     @staticmethod
     def obtener_empleados():
