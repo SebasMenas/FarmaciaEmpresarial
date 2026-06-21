@@ -66,3 +66,46 @@ class ClienteAuth:
         cls._access_token = None
         cls._rol = None
         cls._username = None
+
+    @classmethod
+    def registrar_empleado(
+        cls,
+        username,
+        password,
+        nombre,
+        apellidos,
+        rut,
+        rol,
+        credencial,
+        activo=True
+    ):
+
+        url = f"{API_BASE_URL}/admin/empleados"
+
+        headers = {
+            "Authorization": f"Bearer {cls._access_token}",
+            "Content-Type": "application/json"
+        }
+
+        body = {
+            "username": username,
+            "password": password,
+            "nombre": nombre,
+            "apellidos": apellidos,
+            "rut": rut,
+            "rol": rol,
+            "credencial": credencial,
+            "activo": activo
+        }
+
+        response = requests.post(url, json=body, headers=headers)
+
+        if response.status_code in (200, 201):
+            return True, response.json()
+
+        try:
+            mensaje = response.json().get("message", response.text)
+        except:
+            mensaje = response.text
+
+        return False, mensaje

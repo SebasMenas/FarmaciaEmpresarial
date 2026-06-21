@@ -1,10 +1,18 @@
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout,
-    QCalendarWidget, QGroupBox,
-    QTableWidget, QTableWidgetItem,
-    QPushButton, QLabel,
-    QComboBox, QLineEdit,
-    QHeaderView
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QCalendarWidget,
+    QGroupBox,
+    QTableWidget,
+    QTableWidgetItem,
+    QPushButton,
+    QLabel,
+    QComboBox,
+    QLineEdit,
+    QHeaderView,
+    QMessageBox,
+    QCheckBox,
 )
 
 from PySide6.QtCharts import (
@@ -16,7 +24,8 @@ from PySide6.QtCharts import (
     QValueAxis
 )
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QDate
+from api.AdminConsultas import ClienteMonitoreo, ClienteOperaciones
 
 
 class auxMayor(QWidget):
@@ -24,377 +33,341 @@ class auxMayor(QWidget):
     def __init__(self):
         super().__init__()
 
-        self.setWindowTitle(
-            "Supervisor de Inventario"
-        )
-
+        self.setWindowTitle("Supervisor de Inventario - Auxiliar Mayor")
         self.resize(1600, 900)
 
+        self.lotes_cargados = []
+        self.lote_seleccionado_id = None
+
         self.inicializar_ui()
+        self.cargar_datos_iniciales()
 
     def inicializar_ui(self):
-
         layout_principal = QVBoxLayout(self)
 
         # ==================================================
-        # FILA 1
+        # FILA 1: AGENDA Y TAREAS
         # ==================================================
-
         fila_1 = QHBoxLayout()
 
-        # ------------------------------------------
-        # Calendario
-        # ------------------------------------------
-
-        grupo_cal = QGroupBox(
-            "Seleccionar Fecha"
-        )
-
+        # 1. Calendario
+        grupo_cal = QGroupBox("Seleccionar Fecha")
         layout_cal = QVBoxLayout()
-
         self.calendario = QCalendarWidget()
+        layout_cal.addWidget(self.calendario)
+        grupo_cal.setLayout(layout_cal)
 
-        layout_cal.addWidget(
-            self.calendario
-        )
-
-        grupo_cal.setLayout(
-            layout_cal
-        )
-
-        # ------------------------------------------
-        # Formulario tareas
-        # ------------------------------------------
-
-        grupo_form = QGroupBox(
-            "Asignar Tarea"
-        )
-
+        # 2. Formulario Asignar Tarea
+        grupo_form = QGroupBox("Asignar Tarea")
         layout_form = QVBoxLayout()
 
         self.cmb_empleado = QComboBox()
-
-        self.cmb_empleado.addItems([
-            "Juan Pérez",
-            "Ana Soto",
-            "Carlos Díaz"
-        ])
-
         self.input_tarea = QLineEdit()
+        self.input_tarea.setPlaceholderText("Descripción tarea")
+        self.btn_asignar = QPushButton("Asignar")
 
-        self.input_tarea.setPlaceholderText(
-            "Descripción tarea"
-        )
+        layout_form.addWidget(QLabel("Empleado Responsable"))
+        layout_form.addWidget(self.cmb_empleado)
+        layout_form.addWidget(QLabel("Instrucción"))
+        layout_form.addWidget(self.input_tarea)
+        layout_form.addWidget(self.btn_asignar)
+        grupo_form.setLayout(layout_form)
 
-        self.btn_asignar = QPushButton(
-            "Asignar"
-        )
-
-        layout_form.addWidget(
-            QLabel("Empleado")
-        )
-
-        layout_form.addWidget(
-            self.cmb_empleado
-        )
-
-        layout_form.addWidget(
-            QLabel("Tarea")
-        )
-
-        layout_form.addWidget(
-            self.input_tarea
-        )
-
-        layout_form.addWidget(
-            self.btn_asignar
-        )
-
-        grupo_form.setLayout(
-            layout_form
-        )
-
-        # ------------------------------------------
-        # Tabla tareas
-        # ------------------------------------------
-
-        grupo_tareas = QGroupBox(
-            "Tareas Asignadas"
-        )
-
+        # 3. Tabla Tareas Asignadas
+        grupo_tareas = QGroupBox("Tareas Asignadas de la Fecha")
         layout_tareas = QVBoxLayout()
-
         self.tabla_tareas = QTableWidget()
-
         self.tabla_tareas.setColumnCount(4)
-
         self.tabla_tareas.setHorizontalHeaderLabels([
             "Empleado",
             "Tarea Asignada",
             "Fecha",
-            "CheckList"
+            "Completada"
         ])
+        self.tabla_tareas.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        layout_tareas.addWidget(self.tabla_tareas)
+        grupo_tareas.setLayout(layout_tareas)
 
-        self.tabla_tareas.horizontalHeader()\
-            .setSectionResizeMode(
-                QHeaderView.Stretch
-            )
-
-        layout_tareas.addWidget(
-            self.tabla_tareas
-        )
-
-        grupo_tareas.setLayout(
-            layout_tareas
-        )
-
-        fila_1.addWidget(
-            grupo_cal, 2
-        )
-
-        fila_1.addWidget(
-            grupo_form, 1
-        )
-
-        fila_1.addWidget(
-            grupo_tareas, 3
-        )
+        fila_1.addWidget(grupo_cal, 2)
+        fila_1.addWidget(grupo_form, 1)
+        fila_1.addWidget(grupo_tareas, 3)
 
         # ==================================================
-        # FILA 2
+        # FILA 2: GRÁFICO, INVENTARIO Y UBICACIÓN
         # ==================================================
-
         fila_2 = QHBoxLayout()
 
-        # ------------------------------------------
-        # Gráfico
-        # ------------------------------------------
-
-        grupo_grafico = QGroupBox(
-            "Capacidad de Almacenamiento"
-        )
-
+        # 1. Gráfico Capacidad de Almacenamiento
+        grupo_grafico = QGroupBox("Capacidad de Almacenamiento")
         layout_grafico = QVBoxLayout()
 
-        barras = QBarSet("Capacidad")
+        self.chart = QChart()
+        self.chart.setTitle("Uso de Capacidad por Zona (%)")
+        self.grafico = QChartView(self.chart)
+        layout_grafico.addWidget(self.grafico)
+        grupo_grafico.setLayout(layout_grafico)
 
-        barras.append([
-            65,  # refrigeración
-            80   # ambiente
+        # 2. Formulario de Ubicación
+        grupo_inventario = QGroupBox("Almacenar / Ubicar Lote Físico")
+        layout_inv = QVBoxLayout()
+
+        self.txt_lote_seleccionado = QLineEdit()
+        self.txt_lote_seleccionado.setReadOnly(True)
+        self.txt_lote_seleccionado.setPlaceholderText("Seleccione un lote de la tabla")
+
+        self.cmb_zona_temperatura = QComboBox()
+        self.cmb_zona_temperatura.addItem("Zona Ambiente (21°C)", "AMBIENTE")
+        self.cmb_zona_temperatura.addItem("Zona Refrigeración (4°C)", "REFRIGERADO")
+
+        self.input_ubicacion = QLineEdit()
+        self.input_ubicacion.setPlaceholderText("Ej: Estante A - Nivel 2")
+
+        self.btn_actualizar = QPushButton("Almacenar Lote")
+
+        layout_inv.addWidget(QLabel("Lote Seleccionado"))
+        layout_inv.addWidget(self.txt_lote_seleccionado)
+        layout_inv.addWidget(QLabel("Zona Ambiental Destino"))
+        layout_inv.addWidget(self.cmb_zona_temperatura)
+        layout_inv.addWidget(QLabel("Ubicación Física (Coordenada)"))
+        layout_inv.addWidget(self.input_ubicacion)
+        layout_inv.addWidget(self.btn_actualizar)
+        grupo_inventario.setLayout(layout_inv)
+
+        # 3. Tabla Inventario Actual
+        grupo_stock = QGroupBox("Inventario de Lotes Disponibles")
+        layout_stock = QVBoxLayout()
+        self.tabla_stock = QTableWidget()
+        self.tabla_stock.setColumnCount(6)
+        self.tabla_stock.setHorizontalHeaderLabels([
+            "Producto / Lab",
+            "Temperatura",
+            "Caducidad",
+            "Estado",
+            "Cod. Trazabilidad",
+            "Stock"
         ])
+        self.tabla_stock.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        layout_stock.addWidget(self.tabla_stock)
+        grupo_stock.setLayout(layout_stock)
+
+        fila_2.addWidget(grupo_grafico, 2)
+        fila_2.addWidget(grupo_inventario, 1)
+        fila_2.addWidget(grupo_stock, 3)
+
+        # Agregar layouts principales
+        layout_principal.addLayout(fila_1, 1)
+        layout_principal.addLayout(fila_2, 1)
+
+        # Eventos
+        self.calendario.selectionChanged.connect(self.cargar_tareas)
+        self.btn_asignar.clicked.connect(self.asignar_tarea)
+        self.btn_actualizar.clicked.connect(self.almacenar_lote)
+        self.tabla_stock.itemSelectionChanged.connect(self.seleccionar_lote_tabla)
+
+    # ==================================================
+    # MÉTODOS DE DATOS Y CONEXIONES API
+    # ==================================================
+
+    def cargar_datos_iniciales(self):
+        self.cargar_empleados()
+        self.cargar_grafico()
+        self.cargar_inventario()
+        self.cargar_tareas()
+
+    def cargar_empleados(self):
+        res = ClienteMonitoreo.obtener_empleados()
+        if res["exito"]:
+            self.cmb_empleado.clear()
+            self.empleados = res["datos"]
+            for emp in self.empleados:
+                nombre_completo = f"{emp.get('nombre')} {emp.get('apellidos')}"
+                self.cmb_empleado.addItem(nombre_completo, emp.get("id"))
+        else:
+            QMessageBox.warning(self, "Advertencia", f"No se pudo cargar la lista de empleados: {res.get('error')}")
+
+    def cargar_grafico(self):
+        res = ClienteMonitoreo.obtener_capacidad()
+        if not res["exito"]:
+            return
+
+        datos_capacidad = res["datos"]
+        self.chart.removeAllSeries()
+        
+        for axis in list(self.chart.axes()):
+            self.chart.removeAxis(axis)
+
+        barras = QBarSet("Ocupación actual (%)")
+        porc_refrig = 0.0
+        porc_amb = 0.0
+
+        for cap in datos_capacidad:
+            zona = cap.get("zona")
+            max_u = cap.get("capacidad_maxima_unidades", 1) or 1
+            act_u = cap.get("ocupacion_actual", 0) or 0
+            porcentaje = (act_u / max_u) * 100.0
+            if zona == "REFRIGERADO":
+                porc_refrig = porcentaje
+            elif zona == "AMBIENTE":
+                porc_amb = porcentaje
+
+        barras.append([porc_refrig, porc_amb])
 
         serie = QBarSeries()
         serie.append(barras)
-
-        chart = QChart()
-        chart.addSeries(serie)
+        self.chart.addSeries(serie)
 
         categorias = [
-            "Espacio Refrigeración (%)",
-            "Espacio Ambiente (%)"
+            "Zona Refrigeración (%)",
+            "Zona Ambiente (%)"
         ]
-
         eje_x = QBarCategoryAxis()
         eje_x.append(categorias)
-
-        chart.addAxis(
-            eje_x,
-            Qt.AlignBottom
-        )
-
-        serie.attachAxis(
-            eje_x
-        )
+        self.chart.addAxis(eje_x, Qt.AlignBottom)
+        serie.attachAxis(eje_x)
 
         eje_y = QValueAxis()
         eje_y.setRange(0, 100)
+        self.chart.addAxis(eje_y, Qt.AlignLeft)
+        serie.attachAxis(eje_y)
 
-        chart.addAxis(
-            eje_y,
-            Qt.AlignLeft
-        )
+    def cargar_inventario(self):
+        res = ClienteMonitoreo.obtener_almacenamiento()
+        if not res["exito"]:
+            QMessageBox.critical(self, "Error", f"No se pudo cargar el inventario: {res.get('error')}")
+            return
 
-        serie.attachAxis(
-            eje_y
-        )
+        self.lotes_cargados = res["datos"]
+        self.tabla_stock.setRowCount(len(self.lotes_cargados))
 
-        chart.setTitle(
-            "Uso de Capacidad"
-        )
+        for fila, lote in enumerate(self.lotes_cargados):
+            prod_name = lote.get("producto", {}).get("nombre", "Desconocido")
+            lab_name = lote.get("laboratorio", {}).get("nombre", "Desconocido")
+            temp_str = lote.get("temperatura", "Desconocida")
+            
+            self.tabla_stock.setItem(fila, 0, QTableWidgetItem(f"{prod_name}\n({lab_name})"))
+            self.tabla_stock.setItem(fila, 1, QTableWidgetItem(str(temp_str)))
+            self.tabla_stock.setItem(fila, 2, QTableWidgetItem(str(lote.get("fecha_caducidad", ""))))
+            self.tabla_stock.setItem(fila, 3, QTableWidgetItem(str(lote.get("estado", ""))))
+            self.tabla_stock.setItem(fila, 4, QTableWidgetItem(str(lote.get("codigo_trazabilidad", ""))))
+            self.tabla_stock.setItem(fila, 5, QTableWidgetItem(str(lote.get("cantidad", 0))))
 
-        grafico = QChartView(chart)
+    def cargar_tareas(self):
+        fecha_qdate = self.calendario.selectedDate()
+        fecha_str = fecha_qdate.toString("yyyy-MM-dd")
 
-        layout_grafico.addWidget(
-            grafico
-        )
+        res = ClienteMonitoreo.obtener_tareas(fecha_str)
+        if not res["exito"]:
+            QMessageBox.critical(self, "Error", f"No se pudieron cargar las tareas: {res.get('error')}")
+            return
 
-        grupo_grafico.setLayout(
-            layout_grafico
-        )
+        tareas = res["datos"]
+        self.tabla_tareas.setRowCount(len(tareas))
 
-        # ------------------------------------------
-        # Form inventario
-        # ------------------------------------------
+        for fila, tarea in enumerate(tareas):
+            emp = tarea.get("asignado_a", {})
+            nombre_emp = f"{emp.get('nombre', '')} {emp.get('apellidos', '')}"
 
-        grupo_inventario = QGroupBox(
-            "Modificar Inventario"
-        )
+            self.tabla_tareas.setItem(fila, 0, QTableWidgetItem(nombre_emp))
+            self.tabla_tareas.setItem(fila, 1, QTableWidgetItem(str(tarea.get("descripcion", ""))))
+            self.tabla_tareas.setItem(fila, 2, QTableWidgetItem(str(tarea.get("fecha", ""))))
 
-        layout_inv = QVBoxLayout()
+            # Columna de checklist con checkbox interactivo
+            chk = QCheckBox()
+            chk.setChecked(tarea.get("completada", False))
+            
+            # Contenedor centrado para el checkbox
+            widget = QWidget()
+            layout = QHBoxLayout(widget)
+            layout.addWidget(chk)
+            layout.setAlignment(Qt.AlignCenter)
+            layout.setContentsMargins(0, 0, 0, 0)
+            widget.setLayout(layout)
 
-        self.cmb_producto = QComboBox()
+            chk.stateChanged.connect(lambda state, tid=tarea.get("id"): self.cambiar_completada_tarea(tid, state))
 
-        self.cmb_producto.addItems([
-            "Paracetamol",
-            "Ibuprofeno",
-            "Insulina"
-        ])
+            self.tabla_tareas.setCellWidget(fila, 3, widget)
 
-        self.input_ubicacion = QLineEdit()
+    def cambiar_completada_tarea(self, id_tarea, state):
+        completada = (state == 2) # Qt.Checked = 2
+        res = ClienteMonitoreo.actualizar_tarea_estado(id_tarea, completada)
+        if not res["exito"]:
+            QMessageBox.critical(self, "Error", f"No se pudo actualizar el estado de la tarea: {res.get('error')}")
+            self.cargar_tareas()
 
-        self.input_ubicacion.setPlaceholderText(
-            "Ubicación"
-        )
+    def asignar_tarea(self):
+        emp_id = self.cmb_empleado.currentData()
+        descripcion = self.input_tarea.text().strip()
+        fecha_str = self.calendario.selectedDate().toString("yyyy-MM-dd")
 
-        self.btn_actualizar = QPushButton(
-            "Actualizar"
-        )
+        if not emp_id or not descripcion:
+            QMessageBox.warning(self, "Validación", "Debe completar la descripción de la tarea.")
+            return
 
-        layout_inv.addWidget(
-            QLabel("Producto")
-        )
+        datos_tarea = {
+            "descripcion": descripcion,
+            "asignado_a_id": emp_id,
+            "fecha": fecha_str
+        }
 
-        layout_inv.addWidget(
-            self.cmb_producto
-        )
+        res = ClienteMonitoreo.crear_tarea(datos_tarea)
+        if res["exito"]:
+            QMessageBox.information(self, "Éxito", "Tarea programada correctamente.")
+            self.input_tarea.clear()
+            self.cargar_tareas()
+        else:
+            QMessageBox.critical(self, "Error", f"No se pudo asignar la tarea: {res.get('error')}")
 
-        layout_inv.addWidget(
-            QLabel("Ubicación")
-        )
+    def seleccionar_lote_tabla(self):
+        fila_seleccionada = self.tabla_stock.currentRow()
+        if fila_seleccionada >= 0 and fila_seleccionada < len(self.lotes_cargados):
+            lote = self.lotes_cargados[fila_seleccionada]
+            self.lote_seleccionado_id = lote.get("id")
+            prod_name = lote.get("producto", {}).get("nombre", "")
+            cod_lote = lote.get("codigo_lote", "")
+            self.txt_lote_seleccionado.setText(f"{prod_name} (Lote: {cod_lote})")
 
-        layout_inv.addWidget(
-            self.input_ubicacion
-        )
+            # Intentar pre-seleccionar la zona térmica idónea
+            ind_ambiental = lote.get("producto", {}).get("indicacion_ambiental", "AMBIENTE")
+            index = self.cmb_zona_temperatura.findData(ind_ambiental)
+            if index >= 0:
+                self.cmb_zona_temperatura.setCurrentIndex(index)
 
-        layout_inv.addWidget(
-            self.btn_actualizar
-        )
+            self.input_ubicacion.setText(lote.get("ubicacion_almacen") or "")
 
-        grupo_inventario.setLayout(
-            layout_inv
-        )
+    def almacenar_lote(self):
+        if not self.lote_seleccionado_id:
+            QMessageBox.warning(self, "Validación", "Debe seleccionar un lote del inventario.")
+            return
 
-        # ------------------------------------------
-        # Tabla inventario
-        # ------------------------------------------
+        ubicacion = self.input_ubicacion.text().strip()
+        zona_temperatura = self.cmb_zona_temperatura.currentData()
 
-        grupo_stock = QGroupBox(
-            "Inventario Actual"
-        )
+        if not ubicacion:
+            QMessageBox.warning(self, "Validación", "Debe ingresar una coordenada de ubicación física.")
+            return
 
-        layout_stock = QVBoxLayout()
+        datos_ubicacion = {
+            "ubicacion": ubicacion,
+            "temperatura_zona": zona_temperatura
+        }
 
-        self.tabla_stock = QTableWidget()
+        res = ClienteOperaciones.almacenar_lote(self.lote_seleccionado_id, datos_ubicacion)
+        if res["exito"]:
+            QMessageBox.information(self, "Éxito", "Ubicación del lote actualizada correctamente.")
+            self.txt_lote_seleccionado.clear()
+            self.input_ubicacion.clear()
+            self.lote_seleccionado_id = None
+            self.cargar_inventario()
+            self.cargar_grafico() # Actualizar gráfico de capacidad
+        else:
+            QMessageBox.critical(self, "Alerta Térmica", f"No se pudo almacenar:\n{res.get('error')}")
 
-        self.tabla_stock.setColumnCount(6)
-
-        self.tabla_stock.setHorizontalHeaderLabels([
-            "Nombre Producto/Lab",
-            "Temp °C",
-            "FechaCad",
-            "Estado",
-            "CodTraz",
-            "Stock"
-        ])
-
-        self.tabla_stock.horizontalHeader()\
-            .setSectionResizeMode(
-                QHeaderView.Stretch
-            )
-
-        layout_stock.addWidget(
-            self.tabla_stock
-        )
-
-        grupo_stock.setLayout(
-            layout_stock
-        )
-
-        fila_2.addWidget(
-            grupo_grafico, 2
-        )
-
-        fila_2.addWidget(
-            grupo_inventario, 1
-        )
-
-        fila_2.addWidget(
-            grupo_stock, 3
-        )
-
-        # ==================================================
-
-        layout_principal.addLayout(
-            fila_1
-        )
-
-        layout_principal.addLayout(
-            fila_2
-        )
-
-        self.cargar_datos_prueba()
-
-    def cargar_datos_prueba(self):
-
-        datos = [
-            (
-                "Paracetamol\nBayer",
-                "22",
-                "10/12/26",
-                "Disponible",
-                "TRZ001",
-                "120"
-            ),
-            (
-                "Insulina\nNovo Nordisk",
-                "4",
-                "15/09/26",
-                "Disponible",
-                "TRZ002",
-                "35"
-            ),
-            (
-                "Vacuna A\nPfizer",
-                "2",
-                "20/01/27",
-                "Disponible",
-                "TRZ003",
-                "60"
-            )
-        ]
-
-        self.tabla_stock.setRowCount(
-            len(datos)
-        )
-
-        for fila, producto in enumerate(datos):
-
-            for col, valor in enumerate(producto):
-
-                self.tabla_stock.setItem(
-                    fila,
-                    col,
-                    QTableWidgetItem(valor)
-                )
 
 if __name__ == "__main__":
-
     import sys
     from PySide6.QtWidgets import QApplication
 
     app = QApplication(sys.argv)
-
     ventana = auxMayor()
     ventana.show()
-
     sys.exit(app.exec())

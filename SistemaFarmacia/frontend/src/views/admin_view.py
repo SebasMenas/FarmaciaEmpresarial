@@ -8,6 +8,8 @@ from PySide6.QtWidgets import (
 from api.AdminConsultas import ClienteMonitoreo
 from forms.empleados_form import RegistroEmpleadoView
 from forms.empEdit_form import EditarEmpleadoView
+from forms.solicitar_producto_form import SolicitarProductoView
+from forms.reabastecer_form import ReabastecerProductoView
 
 class AdminView(QWidget):
     def __init__(self):
@@ -15,10 +17,17 @@ class AdminView(QWidget):
         self.setWindowTitle("Gestión de Personal e Inventario")
         self.resize(1400, 800)
 
+        self.lotes = []
         self.inicializar_ui()
 
         self.btn_nuevo_empleado.clicked.connect(
             self.abrir_registro_empleado
+        )
+        self.btn_solicitar_producto.clicked.connect(
+            self.abrir_solicitar_producto
+        )
+        self.btn_reabastecer.clicked.connect(
+            self.abrir_reabastecer_producto
         )
         
         self.cargar_empleados()
@@ -80,88 +89,26 @@ class AdminView(QWidget):
         fila_superior.addWidget(grupo_productos)
 
         # ==================================================
-        # FILA INFERIOR
+        # FILA INFERIOR (Acciones de Administración)
         # ==================================================
-        fila_inferior = QHBoxLayout()
-
-        # ----------------------------------------
-        # FORMULARIO EMPLEADO
-        # ----------------------------------------
-        grupo_empleado = QGroupBox("Empleados")
-        layout_empleado = QVBoxLayout()
+        grupo_acciones = QGroupBox("Acciones Rápidas de Administración")
+        layout_acciones = QHBoxLayout()
 
         self.btn_nuevo_empleado = QPushButton("Nuevo Empleado")
+        self.btn_solicitar_producto = QPushButton("Solicitar Producto")
+        self.btn_reabastecer = QPushButton("Reabastecer Producto")
 
-        layout_empleado.addStretch()
-        layout_empleado.addWidget(self.btn_nuevo_empleado)
-        layout_empleado.addStretch()
+        self.btn_nuevo_empleado.setFixedHeight(40)
+        self.btn_solicitar_producto.setFixedHeight(40)
+        self.btn_reabastecer.setFixedHeight(40)
 
-        grupo_empleado.setLayout(layout_empleado)
+        layout_acciones.addWidget(self.btn_nuevo_empleado)
+        layout_acciones.addWidget(self.btn_solicitar_producto)
+        layout_acciones.addWidget(self.btn_reabastecer)
+        grupo_acciones.setLayout(layout_acciones)
 
-        # ----------------------------------------
-        # FORMULARIO SOLICITAR PRODUCTO
-        # ----------------------------------------
-        grupo_solicitud = QGroupBox("Solicitar Producto")
-        layout_solicitud = QVBoxLayout()
-
-        self.input_lab_nuevo = QLineEdit()
-        self.input_lab_nuevo.setPlaceholderText("Laboratorio")
-
-        self.input_lote_nuevo = QLineEdit()
-        self.input_lote_nuevo.setPlaceholderText("Código de lote")
-
-        self.input_trazabilidad_nuevo = QLineEdit()
-        self.input_trazabilidad_nuevo.setPlaceholderText(
-            "Código de trazabilidad"
-        )
-
-        self.btn_solicitar_producto = QPushButton(
-            "Solicitar Producto"
-        )
-
-        layout_solicitud.addWidget(QLabel("Laboratorio"))
-        layout_solicitud.addWidget(self.input_lab_nuevo)
-
-        layout_solicitud.addWidget(QLabel("Código de lote"))
-        layout_solicitud.addWidget(self.input_lote_nuevo)
-
-        layout_solicitud.addWidget(QLabel("Código trazabilidad"))
-        layout_solicitud.addWidget(self.input_trazabilidad_nuevo)
-
-        layout_solicitud.addWidget(self.btn_solicitar_producto)
-
-        grupo_solicitud.setLayout(layout_solicitud)
-
-        # ----------------------------------------
-        # FORMULARIO REABASTECER
-        # ----------------------------------------
-        grupo_reabastecer = QGroupBox("Reabastecer Producto")
-        layout_reabastecer = QVBoxLayout()
-
-        self.cmb_productos = QComboBox()
-
-        self.input_cantidad = QLineEdit()
-        self.input_cantidad.setPlaceholderText(
-            "Cantidad a ingresar"
-        )
-
-        self.btn_reabastecer = QPushButton(
-            "Reabastecer"
-        )
-
-        layout_reabastecer.addWidget(QLabel("Producto"))
-        layout_reabastecer.addWidget(self.cmb_productos)
-
-        layout_reabastecer.addWidget(QLabel("Cantidad"))
-        layout_reabastecer.addWidget(self.input_cantidad)
-
-        layout_reabastecer.addWidget(self.btn_reabastecer)
-
-        grupo_reabastecer.setLayout(layout_reabastecer)
-
-        fila_inferior.addWidget(grupo_empleado)
-        fila_inferior.addWidget(grupo_solicitud)
-        fila_inferior.addWidget(grupo_reabastecer)
+        fila_inferior = QHBoxLayout()
+        fila_inferior.addWidget(grupo_acciones)
 
         # ==================================================
         # AGREGAR FILAS AL LAYOUT PRINCIPAL
@@ -203,6 +150,7 @@ class AdminView(QWidget):
             return
 
         productos = res["datos"]
+        self.lotes = productos
         self.tabla_productos.setRowCount(len(productos))
 
         for fila, producto in enumerate(productos):
@@ -215,19 +163,48 @@ class AdminView(QWidget):
             self.tabla_productos.setItem(fila, 2, QTableWidgetItem(str(producto.get("codigo_trazabilidad", ""))))
             self.tabla_productos.setItem(fila, 3, QTableWidgetItem(str(producto.get("fecha_ingreso", ""))))
 
-            boton = QPushButton("Eliminar")
+            boton = QPushButton("Retirar")
+            lote_id = producto.get("id")
+            boton.clicked.connect(
+                lambda _, lid=lote_id: self.retirar_lote(lid)
+            )
             self.tabla_productos.setCellWidget(fila, 4, boton)
+
     def abrir_registro_empleado(self):
-        self.ventana_registro = RegistroEmpleadoView()
+        self.ventana_registro = RegistroEmpleadoView(callback_exito=self.cargar_empleados)
         self.ventana_registro.show()
 
     def abrir_edicion(self, empleado):
-
         self.ventana_edicion = EditarEmpleadoView(
-            empleado
+            empleado,
+            callback_exito=self.cargar_empleados
         )
-
         self.ventana_edicion.show()
+
+    def abrir_solicitar_producto(self):
+        self.ventana_solicitud = SolicitarProductoView(callback_exito=self.cargar_productos)
+        self.ventana_solicitud.show()
+
+    def abrir_reabastecer_producto(self):
+        self.ventana_reabastecer = ReabastecerProductoView(
+            lotes=self.lotes,
+            callback_exito=self.cargar_productos
+        )
+        self.ventana_reabastecer.show()
+
+    def retirar_lote(self, lote_id):
+        confirmar = QMessageBox.question(
+            self, "Confirmar Retiro",
+            "¿Está seguro de que desea retirar este lote del inventario?",
+            QMessageBox.Yes | QMessageBox.No
+        )
+        if confirmar == QMessageBox.Yes:
+            res = ClienteMonitoreo.cambiar_estado_lote(lote_id, "RETIRADO")
+            if res["exito"]:
+                QMessageBox.information(self, "Éxito", "Lote marcado como RETIRADO.")
+                self.cargar_productos()
+            else:
+                QMessageBox.critical(self, "Error", res.get("error", "No se pudo retirar el lote."))
 
 if __name__ == "__main__":
     import sys

@@ -14,11 +14,12 @@ from api.AdminConsultas import ClienteMonitoreo
 
 class EditarEmpleadoView(QWidget):
 
-    def __init__(self, empleado):
+    def __init__(self, empleado, callback_exito=None):
         super().__init__()
 
         self.empleado = empleado
         self.id_empleado = empleado["id"]
+        self.callback_exito = callback_exito
 
         self.setWindowTitle("Editar Empleado")
         self.resize(450, 500)
@@ -35,12 +36,10 @@ class EditarEmpleadoView(QWidget):
         self.input_apellidos = QLineEdit()
 
         self.cmb_rol = QComboBox()
-        self.cmb_rol.addItems([
-            "ADMIN",
-            "AUXILIAR_DIPLOMADO_MAYOR",
-            "AUXILIAR_DIPLOMADO",
-            "TECNICO_FARMACEUTICO"
-        ])
+        self.cmb_rol.addItem("Administrador", "ADMIN")
+        self.cmb_rol.addItem("Auxiliar Diplomado Mayor", "AUX_MAYOR")
+        self.cmb_rol.addItem("Auxiliar Diplomado", "AUX_DIPLOMADO")
+        self.cmb_rol.addItem("Técnico Farmacéutico", "TECNICO")
 
         self.input_credencial = QLineEdit()
 
@@ -99,22 +98,24 @@ class EditarEmpleadoView(QWidget):
         datos = {
             "nombre": self.input_nombre.text(),
             "apellidos": self.input_apellidos.text(),
-            "rol": self.cmb_rol.currentText(),
+            "rol": self.cmb_rol.currentData(),   # <-- importante
             "credencial": self.input_credencial.text(),
             "activo": self.chk_activo.isChecked()
         }
 
-        ClienteMonitoreo.editar_empleado(
+        res = ClienteMonitoreo.editar_empleado(
             self.id_empleado,
             datos
         )
 
-        if ClienteMonitoreo.res["exito"]:
+        if res["exito"]:
             QMessageBox.information(
                 self,
                 "Éxito",
                 "Empleado actualizado."
             )
+            if self.callback_exito:
+                self.callback_exito()
             self.close()
 
         else:
