@@ -1,6 +1,9 @@
 from fastapi import FastAPI
 from app.db.database import engine, Base
-from app.models.entidades import Usuario, Laboratorio, Producto, Lote
+from app.models.entidades import (
+    Usuario, Laboratorio, Producto, Lote, 
+    Tarea, CapacidadAlmacen, Venta, ItemVenta, RecetaMagistral
+)
 from app.api import auth, monitoreo, test_endpoints, operaciones, admin
 
 Base.metadata.create_all(bind=engine)

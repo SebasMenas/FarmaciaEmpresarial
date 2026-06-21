@@ -10,7 +10,7 @@ class GeneradorDatos:
         multiplo = 2
         for c in reversed(str(cuerpo)):
             suma += int(c) * multiplo
-            multiplo = 4 if multiplo == 7 else multiplo + 1
+            multiplo = 2 if multiplo == 7 else multiplo + 1
         dvr = 11 - (suma % 11)
         dv = 'K' if dvr == 10 else '0' if dvr == 11 else str(dvr)
         return f"{cuerpo}-{dv}"
