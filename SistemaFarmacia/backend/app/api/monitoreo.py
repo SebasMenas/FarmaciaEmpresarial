@@ -6,12 +6,12 @@ from app.db.database import get_db
 from app.db.daos import UsuarioDAO, InventarioDAO, MonitoreoDAO
 from app.schemas.esquemas import UsuarioDTO, LoteMonitoreoDTO, CapacidadAlmacenDTO, TareaDTO, TareaCreate, TareaEstadoUpdate
 from app.models.entidades import Usuario
-from app.core.dependencias_rbac import requiere_admin, requiere_auxiliar_mayor, verificar_token
+from app.core.dependencias_rbac import requiere_auxiliar_mayor, verificar_token
 
 router = APIRouter(prefix="/monitoreo", tags=["Monitoreo de Sistema"])
 
 @router.get("/empleados", response_model=List[UsuarioDTO])
-def obtener_empleados(db: Session = Depends(get_db), usuario_auth: dict = Depends(requiere_admin)):
+def obtener_empleados(db: Session = Depends(get_db), usuario_auth: dict = Depends(requiere_auxiliar_mayor)):
     """Solo ejecutable por Facultativo/Admin. Incluye empleados activos e inactivos (Soft Delete)"""
     return UsuarioDAO.listar_empleados(db)
 
