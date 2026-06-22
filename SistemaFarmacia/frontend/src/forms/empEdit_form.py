@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (
     QMessageBox
 )
 
-from api.AdminConsultas import ClienteMonitoreo
+from api.cliente_monitoreo import ClienteMonitoreo
 
 
 class EditarEmpleadoView(QWidget):
@@ -81,17 +81,17 @@ class EditarEmpleadoView(QWidget):
             self.empleado["apellidos"]
         )
 
-        self.cmb_rol.setCurrentText(
-            self.empleado["rol"]
-        )
+        idx = self.cmb_rol.findData(self.empleado.get("rol", ""))
+        if idx >= 0:
+            self.cmb_rol.setCurrentIndex(idx)
 
         self.input_credencial.setText(
-            self.empleado["credencial"]
+            self.empleado.get("credencial") or ""
         )
 
-        #self.chk_activo.setChecked(
-        #    self.empleado["activo"]
-        #)
+        self.chk_activo.setChecked(
+            self.empleado.get("activo", True)
+        )
 
     def guardar(self):
 
