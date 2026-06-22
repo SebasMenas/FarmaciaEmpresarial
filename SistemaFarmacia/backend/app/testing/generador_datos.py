@@ -24,3 +24,29 @@ class GeneradorDatos:
             {"nombre": "Jeringa Desechable", "componente": "Plástico/Acero", "tipo": "INSUMO_MEDICO", "ambiente": "AMBIENTE"}
         ]
         return random.choice(productos_mock)
+
+    @staticmethod
+    def resolver_ficha_tecnica(nombre_producto: str) -> dict:
+        """
+        Resuelve la ficha técnica (componente activo, tipo, indicación
+        ambiental) para un nombre de producto dado.
+
+        Si el nombre coincide con un producto conocido del catálogo mock
+        (comparación insensible a mayúsculas), reutiliza su ficha técnica
+        real en vez de sortear datos desconectados del nombre. Si el
+        nombre no es reconocido, cae a una ficha técnica aleatoria pero
+        internamente consistente (mismo tipo/ambiente/componente entre sí).
+        """
+        catalogo = [
+            {"nombre": "Amoxicilina", "componente": "Amoxicilina Trihidrato", "tipo": "MEDICAMENTO", "ambiente": "AMBIENTE", "concentracion": "500mg"},
+            {"nombre": "Insulina Glargina", "componente": "Insulina", "tipo": "MEDICAMENTO", "ambiente": "REFRIGERADO", "concentracion": "100UI/mL"},
+            {"nombre": "Base Dermatológica", "componente": "Glicerina/Vaselina", "tipo": "COSMETICO", "ambiente": "AMBIENTE", "concentracion": None},
+            {"nombre": "Jeringa Desechable", "componente": "Plástico/Acero", "tipo": "INSUMO_MEDICO", "ambiente": "AMBIENTE", "concentracion": None},
+        ]
+        nombre_normalizado = nombre_producto.strip().lower()
+        for entrada in catalogo:
+            if entrada["nombre"].lower() == nombre_normalizado:
+                return entrada
+
+        entrada_aleatoria = random.choice(catalogo)
+        return {**entrada_aleatoria, "nombre": nombre_producto}
