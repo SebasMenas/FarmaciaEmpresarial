@@ -53,6 +53,19 @@ class InventarioDAO:
         return db.query(Lote).join(Lote.producto).join(Lote.laboratorio).all()
 
     @staticmethod
+    def obtener_disponibles_para_venta(db: Session) -> List[Lote]:
+        """
+        Catálogo restringido para la pantalla de venta (carrito del Técnico y
+        selección de insumos del Auxiliar Diplomado). Solo expone lotes con
+        stock real y estado DISPONIBLE; oculta lotes retirados, en cuarentena,
+        bloqueados o ya reservados por otra operación.
+        """
+        return db.query(Lote).join(Lote.producto).filter(
+            Lote.estado == EstadoLote.DISPONIBLE,
+            Lote.cantidad > 0
+        ).all()
+    
+    @staticmethod
     def obtener_alertas_caducidad(db: Session, dias_limite: int = 30) -> List[Lote]:
         """Aplica exclusión estricta de estados inactivos o mermas."""
         fecha_limite = date.today() + timedelta(days=dias_limite)

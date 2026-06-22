@@ -70,3 +70,20 @@ def requiere_tecnico(usuario: dict = Depends(verificar_token)):
     # Como todos los roles autenticados son igual o superiores a Tecnico en jerarqia,
     # simplemente validamos que el token sea correcto devolviendo el usuario.
     return usuario
+
+def requiere_acceso_catalogo_venta(usuario: dict = Depends(verificar_token)):
+    """
+    Permite consultar el catálogo de productos disponibles para venta/manufactura.
+    """
+    roles_permitidos = [
+        RolUsuario.ADMIN.value,
+        RolUsuario.AUX_MAYOR.value,
+        RolUsuario.AUX_DIPLOMADO.value,
+        RolUsuario.TECNICO.value,
+    ]
+    if usuario.get("rol") not in roles_permitidos:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Privilegios insuficientes (Requiere Técnico o Auxiliar Diplomado)"
+        )
+    return usuario

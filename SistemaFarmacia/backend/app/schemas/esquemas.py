@@ -137,3 +137,18 @@ class LoteMonitoreoDTO(BaseModel):
         if self.producto.indicacion_ambiental == IndicacionAmbiental.AMBIENTE:
             return "21°C (Ambiente)"
         return "4°C (Refrigerado)"
+
+class LoteVentaDTO(BaseModel):
+    """
+    Esquema reducido para la vista de venta (carrito del Técnico y selección
+    de insumos del Auxiliar Diplomado). Expone solo lo necesario para elegir
+    un producto y cantidad; oculta ubicación física, código de trazabilidad
+    y otros datos de gestión interna del almacén que no corresponden a estos roles.
+    """
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    codigo_lote: str
+    cantidad: int
+    fecha_caducidad: date
+    estado: EstadoLote
+    producto: ProductoDTO

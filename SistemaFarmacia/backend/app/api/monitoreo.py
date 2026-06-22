@@ -4,9 +4,9 @@ from sqlalchemy.orm import Session
 from typing import List
 from app.db.database import get_db
 from app.db.daos import UsuarioDAO, InventarioDAO, MonitoreoDAO
-from app.schemas.esquemas import UsuarioDTO, LoteMonitoreoDTO, CapacidadAlmacenDTO, TareaDTO, TareaCreate, TareaEstadoUpdate
+from app.schemas.esquemas import UsuarioDTO, LoteMonitoreoDTO, CapacidadAlmacenDTO, TareaDTO, TareaCreate, TareaEstadoUpdate, LoteVentaDTO
 from app.models.entidades import Usuario
-from app.core.dependencias_rbac import requiere_auxiliar_mayor, verificar_token
+from app.core.dependencias_rbac import requiere_auxiliar_mayor, verificar_token, requiere_acceso_catalogo_venta
 
 router = APIRouter(prefix="/monitoreo", tags=["Monitoreo de Sistema"])
 
@@ -18,6 +18,10 @@ def obtener_empleados(db: Session = Depends(get_db), usuario_auth: dict = Depend
 @router.get("/almacenamiento", response_model=List[LoteMonitoreoDTO])
 def obtener_estado_almacenamiento(db: Session = Depends(get_db), usuario_auth: dict = Depends(requiere_auxiliar_mayor)):
     return InventarioDAO.obtener_estado_almacenamiento(db)
+
+@router.get("/productos-disponibles", response_model=List[LoteVentaDTO])
+def obtener_productos_disponibles(db: Session = Depends(get_db), usuario_auth: dict = Depends(requiere_acceso_catalogo_venta)):
+    return InventarioDAO.obtener_disponibles_para_venta(db)
 
 @router.get("/alertas-caducidad", response_model=List[LoteMonitoreoDTO])
 def obtener_alertas_caducidad(db: Session = Depends(get_db), usuario_auth: dict = Depends(requiere_auxiliar_mayor)):
