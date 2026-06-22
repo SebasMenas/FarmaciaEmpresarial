@@ -25,7 +25,8 @@ from PySide6.QtCharts import (
 )
 
 from PySide6.QtCore import Qt, QDate
-from api.AdminConsultas import ClienteMonitoreo, ClienteOperaciones
+from api.cliente_monitoreo import ClienteMonitoreo
+from api.cliente_operaciones import ClienteOperaciones
 
 
 class auxMayor(QWidget):

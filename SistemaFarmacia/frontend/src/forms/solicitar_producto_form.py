@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QMessageBox,
 )
-from api.AdminConsultas import ClienteMonitoreo
+from api.cliente_monitoreo import ClienteMonitoreo
 
 
 class SolicitarProductoView(QWidget):
@@ -14,72 +14,89 @@ class SolicitarProductoView(QWidget):
         super().__init__()
 
         self.callback_exito = callback_exito
-        self.setWindowTitle("Solicitar Producto / Simular Proveedor")
-        self.resize(400, 350)
+        self.setWindowTitle("Registrar Nuevo Producto")
+        self.resize(400, 300)
 
         layout = QVBoxLayout()
 
-        # Laboratorio
-        self.input_lab_nuevo = QLineEdit()
-        self.input_lab_nuevo.setPlaceholderText("Nombre del Laboratorio")
+        # Nombre del producto
+        self.input_nombre = QLineEdit()
+        self.input_nombre.setPlaceholderText("Nombre del producto")
 
-        # Código de lote
-        self.input_lote_nuevo = QLineEdit()
-        self.input_lote_nuevo.setPlaceholderText("Código de lote")
+        # Stock mínimo
+        self.input_stock_min = QLineEdit()
+        self.input_stock_min.setPlaceholderText("Stock mínimo (ej: 10)")
+        self.input_stock_min.setText("0")  # Valor por defecto
 
-        # Código de trazabilidad
-        self.input_trazabilidad_nuevo = QLineEdit()
-        self.input_trazabilidad_nuevo.setPlaceholderText("Código de trazabilidad")
+        # Stock máximo
+        self.input_stock_max = QLineEdit()
+        self.input_stock_max.setPlaceholderText("Stock máximo (ej: 100)")
 
         # Botón
-        self.btn_solicitar = QPushButton("Enviar Solicitud / Simular")
+        self.btn_registrar = QPushButton("Registrar Producto")
 
-        layout.addWidget(QLabel("Laboratorio"))
-        layout.addWidget(self.input_lab_nuevo)
+        layout.addWidget(QLabel("Nombre del Producto"))
+        layout.addWidget(self.input_nombre)
 
-        layout.addWidget(QLabel("Código de Lote"))
-        layout.addWidget(self.input_lote_nuevo)
+        layout.addWidget(QLabel("Stock Mínimo"))
+        layout.addWidget(self.input_stock_min)
 
-        layout.addWidget(QLabel("Código de Trazabilidad"))
-        layout.addWidget(self.input_trazabilidad_nuevo)
+        layout.addWidget(QLabel("Stock Máximo"))
+        layout.addWidget(self.input_stock_max)
 
         layout.addStretch()
-        layout.addWidget(self.btn_solicitar)
+        layout.addWidget(self.btn_registrar)
 
         self.setLayout(layout)
 
-        self.btn_solicitar.clicked.connect(self.solicitar_producto)
+        self.btn_registrar.clicked.connect(self.registrar_producto)
 
-    def solicitar_producto(self):
-        lab_nombre = self.input_lab_nuevo.text().strip()
-        lote_cod = self.input_lote_nuevo.text().strip()
-        traz_cod = self.input_trazabilidad_nuevo.text().strip()
+    def registrar_producto(self):
+        nombre = self.input_nombre.text().strip()
+        stock_min_str = self.input_stock_min.text().strip()
+        stock_max_str = self.input_stock_max.text().strip()
 
-        if not lab_nombre or not lote_cod or not traz_cod:
-            QMessageBox.warning(self, "Validación", "Debe completar todos los campos.")
+        if not nombre or not stock_max_str:
+            QMessageBox.warning(self, "Validación", "Debe ingresar el nombre del producto y el stock máximo.")
             return
 
-        lab_lower = lab_nombre.lower()
-        # Simular comportamiento de validación de laboratorios certificado / no certificado
-        if "no" in lab_lower or "uncertified" in lab_lower:
-            res = ClienteMonitoreo.simular_proveedor_no_certificado()
-            if not res["exito"]:
-                detalle = res.get("error", "Transacción abortada: Laboratorio no posee certificación sanitaria.")
-                QMessageBox.warning(self, "Control Sanitario", f"Alerta de Calidad:\n{detalle}")
-            else:
-                QMessageBox.warning(self, "Control Sanitario", "Transacción abortada por falta de certificación del laboratorio.")
+        if stock_min_str and not stock_min_str.isdigit():
+            QMessageBox.warning(self, "Validación", "El stock mínimo debe ser un número entero válido.")
+            return
+
+        if not stock_max_str.isdigit():
+            QMessageBox.warning(self, "Validación", "El stock máximo debe ser un número entero válido.")
+            return
+
+        stock_min = int(stock_min_str) if stock_min_str else 0
+        stock_max = int(stock_max_str)
+
+        if stock_min < 0:
+            QMessageBox.warning(self, "Validación", "El stock mínimo no puede ser negativo.")
+            return
+
+        if stock_max <= 0:
+            QMessageBox.warning(self, "Validación", "El stock máximo debe ser mayor a cero.")
+            return
+
+        if stock_max <= stock_min:
+            QMessageBox.warning(self, "Validación", "El stock máximo debe ser mayor que el stock mínimo.")
+            return
+
+        datos = {
+            "nombre": nombre,
+            "stock_min": stock_min,
+            "stock_max": stock_max
+        }
+
+        res = ClienteMonitoreo.registrar_producto(datos)
+        if res["exito"]:
+            QMessageBox.information(
+                self, "Registro Exitoso",
+                f"Producto '{nombre}' registrado correctamente."
+            )
+            if self.callback_exito:
+                self.callback_exito()
+            self.close()
         else:
-            res = ClienteMonitoreo.simular_proveedor_certificado()
-            if res["exito"]:
-                datos = res["datos"]
-                QMessageBox.information(
-                    self, "Simulación Exitosa",
-                    f"Se ha inyectado un lote de un proveedor certificado sanitariamente:\n"
-                    f"Laboratorio: {datos.get('laboratorio')}\n"
-                    f"Lote: {datos.get('codigo_lote')}"
-                )
-                if self.callback_exito:
-                    self.callback_exito()
-                self.close()
-            else:
-                QMessageBox.critical(self, "Error de Simulación", res.get("error", "Error desconocido"))
+            QMessageBox.critical(self, "Error", res.get("error", "Error al registrar el producto."))
