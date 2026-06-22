@@ -3,12 +3,14 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from pydantic import BaseModel, Field
 from datetime import date
+import random
 from app.db.database import get_db
 from app.db.daos import UsuarioDAO, InventarioDAO
-from app.models.entidades import Usuario, RolUsuario, EstadoLote, TipoProducto, IndicacionAmbiental, Producto, Lote
+from app.models.entidades import Usuario, RolUsuario, EstadoLote, Producto, Lote, Laboratorio
 from app.schemas.esquemas import CapacidadAlmacenUpdate
 from app.core.dependencias_rbac import requiere_admin
 from app.core.security import Security
+from app.testing.generador_datos import GeneradorDatos
 
 router = APIRouter(prefix="/admin", tags=["Administración"])
 
@@ -33,20 +35,28 @@ class EstadoLoteUpdate(BaseModel):
     estado: EstadoLote
 
 class ProductoCreate(BaseModel):
+    """
+    El Admin solicita un producto nuevo indicando solo el nombre.
+    La ficha técnica (componente activo, concentración, tipo de
+    producto e indicación ambiental) la determina el sistema, igual
+    que ocurre con un producto real: esos datos vienen del fabricante,
+    no los inventa quien hace el pedido de abastecimiento.
+    """
     nombre: str = Field(..., min_length=1, max_length=150)
-    componente_activos: str | None = Field(default=None, max_length=150)
-    concentracion: str | None = Field(default=None, max_length=50)
-    tipo_producto: TipoProducto
-    indicacion_ambiental: IndicacionAmbiental
     stock_min: int = Field(default=0, ge=0)
     stock_max: int = Field(..., gt=0)
 
 class LoteCreate(BaseModel):
-    codigo_lote: str = Field(..., max_length=50)
-    codigo_trazabilidad: str = Field(..., max_length=100)
+    """
+    El Admin solicita reabastecimiento indicando QUÉ producto necesita,
+    en QUÉ cantidad y para CUÁNDO vence. El laboratorio proveedor, el
+    código de lote y el código de trazabilidad no los decide el Admin:
+    en la vida real los asigna el laboratorio externo al despachar el
+    pedido, así que aquí se generan automáticamente (mismo patrón que
+    usa MockLaboratorio al simular un ingreso real).
+    """
     producto_id: int
-    laboratorio_id: int
-    cantidad: int = Field(..., ge=0)
+    cantidad: int = Field(..., gt=0)
     fecha_caducidad: date
 
 @router.post("/empleados", status_code=status.HTTP_201_CREATED)
@@ -85,27 +95,81 @@ def cambiar_estado_existencia(id: int, payload: EstadoLoteUpdate, db: Session = 
 
 @router.post("/productos", status_code=status.HTTP_201_CREATED)
 def registrar_producto(payload: ProductoCreate, db: Session = Depends(get_db), usuario_auth: dict = Depends(requiere_admin)):
-    nuevo_prod = Producto(**payload.model_dump())
+    """
+    Registra un producto nuevo en catálogo a partir del nombre solicitado.
+    La ficha técnica (componente activo, concentración, tipo de producto
+    e indicación ambiental) se resuelve automáticamente.
+    """
+    ficha = GeneradorDatos.resolver_ficha_tecnica(payload.nombre)
+
+    nuevo_prod = Producto(
+        nombre=payload.nombre,
+        componente_activos=ficha["componente"],
+        concentracion=ficha["concentracion"],
+        tipo_producto=ficha["tipo"],
+        indicacion_ambiental=ficha["ambiente"],
+        stock_min=payload.stock_min,
+        stock_max=payload.stock_max,
+    )
     db.add(nuevo_prod)
     try:
         db.commit()
         db.refresh(nuevo_prod)
-        return {"exito": True, "producto_id": nuevo_prod.id}
+        return {
+            "exito": True,
+            "producto_id": nuevo_prod.id,
+            "ficha_tecnica_generada": {
+                "componente_activos": nuevo_prod.componente_activos,
+                "concentracion": nuevo_prod.concentracion,
+                "tipo_producto": nuevo_prod.tipo_producto,
+                "indicacion_ambiental": nuevo_prod.indicacion_ambiental,
+            }
+        }
     except IntegrityError:
         db.rollback()
         raise HTTPException(status_code=400, detail="Error de integridad en los datos del producto.")
 
 @router.post("/lotes", status_code=status.HTTP_201_CREATED)
 def registrar_lote_existente(payload: LoteCreate, db: Session = Depends(get_db), usuario_auth: dict = Depends(requiere_admin)):
-    nuevo_lote = Lote(**payload.model_dump())
+    """
+    Registra el reabastecimiento de un producto ya existente en catálogo.
+    El laboratorio que despacha el pedido y los códigos de lote/trazabilidad
+    se generan automáticamente (no son datos que el Admin deba inventar);
+    esto evita además colisiones con las columnas unique de la tabla lotes.
+    """
+    producto = db.query(Producto).filter(Producto.id == payload.producto_id).first()
+    if not producto:
+        raise HTTPException(status_code=404, detail="El producto solicitado no existe en el catálogo.")
+
+    nombre_lab = f"Laboratorio Bio_{random.randint(100, 999)}"
+    laboratorio = Laboratorio(nombre=nombre_lab, certificado=True)
+    db.add(laboratorio)
+    db.flush()  # asigna laboratorio.id sin cerrar la transacción
+
+    num_aleatorio = random.randint(1000, 9999)
+    nuevo_lote = Lote(
+        codigo_lote=f"L-{num_aleatorio}",
+        codigo_trazabilidad=f"TZ-{num_aleatorio}",
+        producto_id=producto.id,
+        laboratorio_id=laboratorio.id,
+        cantidad=payload.cantidad,
+        fecha_caducidad=payload.fecha_caducidad,
+        estado=EstadoLote.DISPONIBLE
+    )
     db.add(nuevo_lote)
     try:
         db.commit()
         db.refresh(nuevo_lote)
-        return {"exito": True, "lote_id": nuevo_lote.id}
+        return {
+            "exito": True,
+            "lote_id": nuevo_lote.id,
+            "codigo_lote": nuevo_lote.codigo_lote,
+            "codigo_trazabilidad": nuevo_lote.codigo_trazabilidad,
+            "laboratorio": laboratorio.nombre
+        }
     except IntegrityError:
         db.rollback()
-        raise HTTPException(status_code=400, detail="Código de lote o trazabilidad duplicado.")
+        raise HTTPException(status_code=400, detail="Colisión al generar el código de lote o trazabilidad; reintente la solicitud.")
     
 @router.post("/capacidad", status_code=status.HTTP_200_OK)
 def configurar_capacidad_almacen(
