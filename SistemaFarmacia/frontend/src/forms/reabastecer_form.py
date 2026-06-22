@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QMessageBox,
 )
-from api.cliente_monitoreo import ClienteMonitoreo
+from api.AdminConsultas import ClienteMonitoreo
 
 
 class ReabastecerProductoView(QWidget):
@@ -72,10 +72,26 @@ class ReabastecerProductoView(QWidget):
             QMessageBox.warning(self, "Validación", "La cantidad debe ser mayor que cero.")
             return
 
+        # Buscar lote de referencia para copiar el laboratorio
+        lote_ref = None
+        for lote in self.lotes:
+            if lote.get("producto", {}).get("id") == prod_id:
+                lote_ref = lote
+                break
+
+        if not lote_ref:
+            QMessageBox.critical(self, "Error", "No se encontró referencia del producto.")
+            return
+
+        import random
         from datetime import date, timedelta
+        num = random.randint(100, 999)
         
         datos_lote = {
+            "codigo_lote": f"L-REAB-{num}",
+            "codigo_trazabilidad": f"TZ-REAB-{num}",
             "producto_id": prod_id,
+            "laboratorio_id": lote_ref.get("laboratorio", {}).get("id"),
             "cantidad": cantidad,
             "fecha_caducidad": str(date.today() + timedelta(days=120))
         }
@@ -84,7 +100,8 @@ class ReabastecerProductoView(QWidget):
         if res["exito"]:
             QMessageBox.information(
                 self, "Reabastecimiento Exitoso",
-                f"Lote ingresado exitosamente.\n"
+                f"Lote ingresado exitosamente:\n"
+                f"Lote: {datos_lote['codigo_lote']}\n"
                 f"Cantidad: {cantidad}"
             )
             if self.callback_exito:

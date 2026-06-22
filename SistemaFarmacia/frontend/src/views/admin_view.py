@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (
     QComboBox, QGroupBox,
     QHeaderView, QMessageBox
 )
-from api.cliente_monitoreo import ClienteMonitoreo
+from api.AdminConsultas import ClienteMonitoreo
 from forms.empleados_form import RegistroEmpleadoView
 from forms.empEdit_form import EditarEmpleadoView
 from forms.solicitar_producto_form import SolicitarProductoView
