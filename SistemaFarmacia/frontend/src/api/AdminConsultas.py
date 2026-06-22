@@ -349,3 +349,72 @@ class ClienteOperaciones:
             return {"exito": False, "error": mensaje}
         except Exception as e:
             return {"exito": False, "error": str(e)}
+
+    @staticmethod
+    def iniciar_venta(id_cliente):
+        try:
+            respuesta = requests.post(
+                f"{API_BASE_URL}/operaciones/ventas/atender",
+                json={"id_cliente": id_cliente},
+                headers=ClienteAuth.obtener_headers(),
+                timeout=5
+            )
+            if respuesta.status_code in (200, 201):
+                return {"exito": True, "datos": respuesta.json()}
+            return {"exito": False, "error": respuesta.text}
+        except Exception as e:
+            return {"exito": False, "error": str(e)}
+
+    @staticmethod
+    def agregar_item_venta(id_venta, lote_id, cantidad):
+        try:
+            respuesta = requests.post(
+                f"{API_BASE_URL}/operaciones/ventas/{id_venta}/items",
+                json={"lote_id": lote_id, "cantidad": cantidad},
+                headers=ClienteAuth.obtener_headers(),
+                timeout=5
+            )
+            if respuesta.status_code in (200, 201):
+                return {"exito": True, "datos": respuesta.json()}
+            try:
+                err_json = respuesta.json()
+                mensaje = err_json.get("detail", {}).get("mensaje", respuesta.text)
+            except:
+                mensaje = respuesta.text
+            return {"exito": False, "error": mensaje}
+        except Exception as e:
+            return {"exito": False, "error": str(e)}
+
+    @staticmethod
+    def finalizar_venta(id_venta, datos):
+        try:
+            respuesta = requests.post(
+                f"{API_BASE_URL}/operaciones/ventas/{id_venta}/factura",
+                json=datos,
+                headers=ClienteAuth.obtener_headers(),
+                timeout=5
+            )
+            if respuesta.status_code in (200, 201):
+                return {"exito": True, "datos": respuesta.json()}
+            try:
+                err_json = respuesta.json()
+                mensaje = err_json.get("detail", {}).get("mensaje", respuesta.text)
+            except:
+                mensaje = respuesta.text
+            return {"exito": False, "error": mensaje}
+        except Exception as e:
+            return {"exito": False, "error": str(e)}
+
+    @staticmethod
+    def cancelar_venta(id_venta):
+        try:
+            respuesta = requests.post(
+                f"{API_BASE_URL}/operaciones/ventas/{id_venta}/cancelar",
+                headers=ClienteAuth.obtener_headers(),
+                timeout=5
+            )
+            if respuesta.status_code == 200:
+                return {"exito": True, "datos": respuesta.json()}
+            return {"exito": False, "error": respuesta.text}
+        except Exception as e:
+            return {"exito": False, "error": str(e)}
