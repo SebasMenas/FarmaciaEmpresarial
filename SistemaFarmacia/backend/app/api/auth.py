@@ -17,7 +17,13 @@ def login(solicitud: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
             detail="Credenciales de acceso incorrectas",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
+    if not usuario.activo:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cuenta desactivada. Contacte al administrador del sistema.",
+        )
+
     datos_token = {"sub": usuario.username, "id": usuario.id, "rol": usuario.rol}
     token = Security.crear_token_acceso(datos_token)
     

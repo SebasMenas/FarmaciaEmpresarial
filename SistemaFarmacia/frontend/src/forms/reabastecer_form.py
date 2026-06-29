@@ -1,43 +1,66 @@
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
+    QFormLayout,
     QLabel,
-    QLineEdit,
+    QSpinBox,
+    QDateEdit,
     QComboBox,
     QPushButton,
     QMessageBox,
 )
-from api.cliente_monitoreo import ClienteMonitoreo
+from PySide6.QtCore import QDate
+from api.AdminConsultas import ClienteMonitoreo
 
 
 class ReabastecerProductoView(QWidget):
-    def __init__(self, lotes, callback_exito=None):
+    """
+    Formulario para que el Admin reabastezca un producto YA EXISTENTE
+    en catálogo.
+
+    El Admin solo indica qué producto, cuánta cantidad y para cuándo
+    vence. El laboratorio proveedor y los códigos de lote/trazabilidad
+    los genera el backend automáticamente (mismo patrón que usa el
+    laboratorio externo real al despachar un pedido), evitando además
+    colisiones con las columnas únicas de la base de datos.
+    """
+
+    def __init__(self, callback_exito=None):
         super().__init__()
 
-        self.lotes = lotes
         self.callback_exito = callback_exito
         self.setWindowTitle("Reabastecer Producto")
-        self.resize(400, 300)
+        self.resize(400, 280)
 
         layout = QVBoxLayout()
 
-        # Selector de producto
         self.cmb_productos = QComboBox()
         self.cargar_productos_combo()
 
-        # Cantidad
-        self.input_cantidad = QLineEdit()
-        self.input_cantidad.setPlaceholderText("Cantidad a ingresar")
+        self.spin_cantidad = QSpinBox()
+        self.spin_cantidad.setRange(1, 100000)
+        self.spin_cantidad.setValue(50)
 
-        # Botón
+        self.date_caducidad = QDateEdit()
+        self.date_caducidad.setCalendarPopup(True)
+        self.date_caducidad.setDate(QDate.currentDate().addDays(120))
+        self.date_caducidad.setMinimumDate(QDate.currentDate().addDays(1))
+
+        form = QFormLayout()
+        form.addRow("Producto", self.cmb_productos)
+        form.addRow("Cantidad a ingresar", self.spin_cantidad)
+        form.addRow("Fecha de caducidad", self.date_caducidad)
+
+        self.lbl_nota = QLabel(
+            "El laboratorio proveedor y los códigos de lote/trazabilidad\n"
+            "se generan automáticamente al registrar el reabastecimiento."
+        )
+        self.lbl_nota.setWordWrap(True)
+
         self.btn_reabastecer = QPushButton("Registrar Reabastecimiento")
 
-        layout.addWidget(QLabel("Seleccionar Producto"))
-        layout.addWidget(self.cmb_productos)
-
-        layout.addWidget(QLabel("Cantidad a ingresar"))
-        layout.addWidget(self.input_cantidad)
-
+        layout.addLayout(form)
+        layout.addWidget(self.lbl_nota)
         layout.addStretch()
         layout.addWidget(self.btn_reabastecer)
 
@@ -46,16 +69,30 @@ class ReabastecerProductoView(QWidget):
         self.btn_reabastecer.clicked.connect(self.reabastecer_producto)
 
     def cargar_productos_combo(self):
+        """
+        Carga el catálogo real de productos (GET /admin/productos),
+        independiente de si ya tienen lotes ingresados o no. Antes esta
+        lista se derivaba de los lotes existentes, así que un producto
+        recién creado sin stock todavía nunca aparecía para reabastecer.
+        """
         self.cmb_productos.clear()
-        productos_vistos = set()
-        for p in self.lotes:
-            prod_obj = p.get("producto")
-            if prod_obj:
-                prod_id = prod_obj.get("id")
-                prod_nombre = prod_obj.get("nombre")
-                if prod_id not in productos_vistos:
-                    productos_vistos.add(prod_id)
-                    self.cmb_productos.addItem(prod_nombre, prod_id)
+
+        res = ClienteMonitoreo.listar_catalogo_productos()
+        if not res["exito"]:
+            QMessageBox.warning(
+                self, "Catálogo no disponible",
+                f"No se pudo cargar el catálogo de productos:\n{res.get('error', '')}"
+            )
+            return
+
+        productos = res["datos"]
+        if not productos:
+            self.cmb_productos.addItem("(Sin productos en catálogo)", None)
+            return
+
+        for prod in productos:
+            etiqueta = f"{prod['nombre']}  —  stock actual: {prod.get('stock_total', 0)}"
+            self.cmb_productos.addItem(etiqueta, prod["id"])
 
     def reabastecer_producto(self):
         prod_id = self.cmb_productos.currentData()
@@ -63,32 +100,28 @@ class ReabastecerProductoView(QWidget):
             QMessageBox.warning(self, "Validación", "Debe seleccionar un producto.")
             return
 
-        cantidad_str = self.input_cantidad.text().strip()
-        if not cantidad_str.isdigit():
-            QMessageBox.warning(self, "Validación", "La cantidad debe ser un número entero válido.")
-            return
-        cantidad = int(cantidad_str)
-        if cantidad <= 0:
-            QMessageBox.warning(self, "Validación", "La cantidad debe ser mayor que cero.")
-            return
+        cantidad = self.spin_cantidad.value()
+        fecha_caducidad = self.date_caducidad.date().toString("yyyy-MM-dd")
 
-        from datetime import date, timedelta
-        
         datos_lote = {
             "producto_id": prod_id,
             "cantidad": cantidad,
-            "fecha_caducidad": str(date.today() + timedelta(days=120))
+            "fecha_caducidad": fecha_caducidad,
         }
 
         res = ClienteMonitoreo.registrar_lote(datos_lote)
         if res["exito"]:
+            datos_resultado = res["datos"]
             QMessageBox.information(
                 self, "Reabastecimiento Exitoso",
-                f"Lote ingresado exitosamente.\n"
+                f"Lote ingresado exitosamente:\n"
+                f"Lote: {datos_resultado.get('codigo_lote', '—')}\n"
+                f"Trazabilidad: {datos_resultado.get('codigo_trazabilidad', '—')}\n"
+                f"Laboratorio: {datos_resultado.get('laboratorio', '—')}\n"
                 f"Cantidad: {cantidad}"
             )
             if self.callback_exito:
                 self.callback_exito()
             self.close()
         else:
-            QMessageBox.critical(self, "Error", res.get("error", "Error al registrar el reabastecimiento."))
+            QMessageBox.critical(self, "Error", str(res.get("error", "Error al registrar el reabastecimiento.")))

@@ -33,13 +33,14 @@ class MockLaboratorio:
                 componente_activos=prod_datos["componente"],
                 tipo_producto=prod_datos["tipo"],
                 indicacion_ambiental=prod_datos["ambiente"],
-                stock_max=500
             )
             db.add(prod)
             db.commit()
             db.refresh(prod)
 
-        # 4. Fabricar lote y asignar
+        # 4. Fabricar lote. Llega sin zona asignada (zona_id=None): la simulación
+        # representa solo la recepción física del laboratorio; la asignación a
+        # una de las 4 zonas físicas es una tarea posterior del Auxiliar Mayor.
         num_aleatorio = random.randint(100, 999)
         nuevo_lote = Lote(
             codigo_lote=f"L-{num_aleatorio}",
@@ -48,7 +49,6 @@ class MockLaboratorio:
             laboratorio_id=lab.id,
             cantidad=random.randint(50, 200),
             fecha_caducidad=date.today() + timedelta(days=random.randint(-10, 120)),
-            ubicacion_almacen=f"Estante-{random.choice(['A', 'B', 'C'])}-Nivel{random.randint(1,4)}",
             estado=EstadoLote.DISPONIBLE
         )
         db.add(nuevo_lote)

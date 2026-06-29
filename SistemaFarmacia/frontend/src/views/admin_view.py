@@ -5,11 +5,13 @@ from PySide6.QtWidgets import (
     QComboBox, QGroupBox,
     QHeaderView, QMessageBox
 )
-from api.cliente_monitoreo import ClienteMonitoreo
+from api.AdminConsultas import ClienteMonitoreo
+from api.cliente_auth import ClienteAuth
 from forms.empleados_form import RegistroEmpleadoView
 from forms.empEdit_form import EditarEmpleadoView
 from forms.solicitar_producto_form import SolicitarProductoView
 from forms.reabastecer_form import ReabastecerProductoView
+from forms.recalibrar_capacidad_form import RecalibrarCapacidadView
 
 class AdminView(QWidget):
     def __init__(self):
@@ -17,7 +19,6 @@ class AdminView(QWidget):
         self.setWindowTitle("Gestión de Personal e Inventario")
         self.resize(1400, 800)
 
-        self.lotes = []
         self.inicializar_ui()
 
         self.btn_nuevo_empleado.clicked.connect(
@@ -28,6 +29,9 @@ class AdminView(QWidget):
         )
         self.btn_reabastecer.clicked.connect(
             self.abrir_reabastecer_producto
+        )
+        self.btn_capacidad_zonas.clicked.connect(
+            self.abrir_recalibrar_capacidad
         )
         
         self.cargar_empleados()
@@ -47,11 +51,12 @@ class AdminView(QWidget):
         layout_empleados = QVBoxLayout()
 
         self.tabla_empleados = QTableWidget()
-        self.tabla_empleados.setColumnCount(4)
+        self.tabla_empleados.setColumnCount(5)
         self.tabla_empleados.setHorizontalHeaderLabels([
             "Nombres",
             "Apellidos",
             "Rol",
+            "Estado",
             "Acción"
         ])
 
@@ -97,14 +102,17 @@ class AdminView(QWidget):
         self.btn_nuevo_empleado = QPushButton("Nuevo Empleado")
         self.btn_solicitar_producto = QPushButton("Solicitar Producto")
         self.btn_reabastecer = QPushButton("Reabastecer Producto")
+        self.btn_capacidad_zonas = QPushButton("Capacidad de Zonas")
 
         self.btn_nuevo_empleado.setFixedHeight(40)
         self.btn_solicitar_producto.setFixedHeight(40)
         self.btn_reabastecer.setFixedHeight(40)
+        self.btn_capacidad_zonas.setFixedHeight(40)
 
         layout_acciones.addWidget(self.btn_nuevo_empleado)
         layout_acciones.addWidget(self.btn_solicitar_producto)
         layout_acciones.addWidget(self.btn_reabastecer)
+        layout_acciones.addWidget(self.btn_capacidad_zonas)
         grupo_acciones.setLayout(layout_acciones)
 
         fila_inferior = QHBoxLayout()
@@ -127,19 +135,39 @@ class AdminView(QWidget):
         empleados = self.empleados
         self.tabla_empleados.setRowCount(len(empleados))
 
+        username_actual = ClienteAuth.obtener_username_actual()
+
         for fila, empleado in enumerate(empleados):
+            es_propia_cuenta = empleado.get("username") == username_actual
+
+            nombre_mostrado = str(empleado.get("nombre", ""))
+            if es_propia_cuenta:
+                nombre_mostrado += "  (mi cuenta)"
+
             # Casteo explícito a string para evitar TypeErrors con valores nulos
-            self.tabla_empleados.setItem(fila, 0, QTableWidgetItem(str(empleado.get("nombre", ""))))
+            self.tabla_empleados.setItem(fila, 0, QTableWidgetItem(nombre_mostrado))
             self.tabla_empleados.setItem(fila, 1, QTableWidgetItem(str(empleado.get("apellidos", ""))))
             self.tabla_empleados.setItem(fila, 2, QTableWidgetItem(str(empleado.get("rol", ""))))
 
+            estado_texto = "Activo" if empleado.get("activo", True) else "Desactivado"
+            self.tabla_empleados.setItem(fila, 3, QTableWidgetItem(estado_texto))
+
             boton = QPushButton("Editar")
 
-            boton.clicked.connect(
-                lambda _, empleado=empleado:
-                    self.abrir_edicion(empleado)
-            )
-            self.tabla_empleados.setCellWidget(fila, 3, boton)
+            if es_propia_cuenta:
+                # El backend ya rechaza intentos de auto-desactivación o cambio
+                # de rol propio (ver PUT /admin/empleados/{id}); aquí se refleja
+                # también en la UI para que no parezca una acción habilitada
+                # que luego falla sin explicación.
+                boton.setEnabled(False)
+                boton.setToolTip("No puede editar su propia cuenta desde aquí (riesgo de autobloqueo).")
+            else:
+                boton.clicked.connect(
+                    lambda _, empleado=empleado:
+                        self.abrir_edicion(empleado)
+                )
+
+            self.tabla_empleados.setCellWidget(fila, 4, boton)
 
     def cargar_productos(self):
         res = ClienteMonitoreo.obtener_almacenamiento()
@@ -150,7 +178,6 @@ class AdminView(QWidget):
             return
 
         productos = res["datos"]
-        self.lotes = productos
         self.tabla_productos.setRowCount(len(productos))
 
         for fila, producto in enumerate(productos):
@@ -187,10 +214,13 @@ class AdminView(QWidget):
 
     def abrir_reabastecer_producto(self):
         self.ventana_reabastecer = ReabastecerProductoView(
-            lotes=self.lotes,
             callback_exito=self.cargar_productos
         )
         self.ventana_reabastecer.show()
+
+    def abrir_recalibrar_capacidad(self):
+        self.ventana_capacidad = RecalibrarCapacidadView()
+        self.ventana_capacidad.show()
 
     def retirar_lote(self, lote_id):
         confirmar = QMessageBox.question(

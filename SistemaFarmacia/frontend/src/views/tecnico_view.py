@@ -1,123 +1,209 @@
 from PySide6.QtWidgets import (
-    QWidget,
-    QHBoxLayout,
-    QVBoxLayout,
-    QPushButton,
-    QTableWidget,
-    QTableWidgetItem,
-    QGroupBox,
-    QHeaderView,
-    QLabel,
-    QMessageBox,
+    QWidget, QHBoxLayout, QVBoxLayout,
+    QPushButton, QTableWidget,
+    QTableWidgetItem, QGroupBox,
+    QHeaderView, QLabel, QMessageBox
 )
-from api.cliente_monitoreo import ClienteMonitoreo
-from api.cliente_operaciones import ClienteOperaciones
-from forms.nueva_orden_form import NuevaOrdenView
-from forms.agregar_item_form import AgregarItemView
-from forms.procesar_orden_form import ProcesarOrdenView
+from PySide6.QtCore import Qt
+
+from api.AdminConsultas import ClienteMonitoreo, ClienteOperaciones
 
 
 class OrdenesView(QWidget):
+    """
+    Pantalla del Técnico. El cliente y su pedido (productos deseados y,
+    si corresponde, receta ya emitida por un doctor) se generan
+    automáticamente al presionar "Nueva Venta" — el Técnico nunca asigna
+    un ID de cliente ni redacta ninguna receta. Al facturar, si el pedido
+    trae receta, la derivación al Auxiliar Diplomado es automática; no se
+    le pregunta nada al Técnico en ese momento.
+    """
+
     def __init__(self):
         super().__init__()
 
-        self.setWindowTitle("Gestión de Ventas y Órdenes - Técnico")
+        self.setWindowTitle("Gestión de Órdenes")
         self.resize(1400, 800)
 
-        self.venta_activa = None  # Almacena el dict de VentaDTO activa
-        self.carrito_items = []   # Mantiene los ítems del carro localmente
-        self.lotes_disponibles = []
+        self.venta_actual_id = None
+        self.pedido_actual = []  # lista de líneas {producto_id, nombre, cantidad_solicitada, cubierto}
+        self.productos_disponibles = []
 
         self.inicializar_ui()
         self.cargar_inventario()
-        self.actualizar_estado_carro()
 
     def inicializar_ui(self):
         layout_principal = QHBoxLayout(self)
 
         # =====================================
-        # COLUMNA IZQUIERDA: CONTROLES
+        # COLUMNA IZQUIERDA — ACCIONES
         # =====================================
         panel_botones = QVBoxLayout()
 
-        self.lbl_estado = QLabel("Sin Orden Activa")
-        self.lbl_estado.setStyleSheet("font-weight: bold; color: #ff5555; font-size: 14px;")
-        self.lbl_estado.setWordWrap(True)
+        self.lbl_cliente_actual = QLabel("Sin venta activa")
+        self.lbl_cliente_actual.setWordWrap(True)
 
-        self.btn_nueva_orden = QPushButton("Nueva Venta")
-        self.btn_procesar = QPushButton("Procesar / Facturar")
-        self.btn_cancelar = QPushButton("Cancelar Orden")
-        self.btn_refrescar = QPushButton("Refrescar Stock")
+        self.lbl_receta_actual = QLabel("")
+        self.lbl_receta_actual.setWordWrap(True)
+        self.lbl_receta_actual.setStyleSheet("color: #B85C00; font-weight: bold;")
 
-        self.btn_nueva_orden.setFixedHeight(40)
-        self.btn_procesar.setFixedHeight(40)
-        self.btn_cancelar.setFixedHeight(40)
-        self.btn_refrescar.setFixedHeight(40)
+        self.btn_nueva_venta = QPushButton("Nueva Venta")
+        self.btn_facturar = QPushButton("Facturar")
+        self.btn_cancelar_venta = QPushButton("Cancelar Venta")
 
-        panel_botones.addWidget(QLabel("Estado de la Sesión:"))
-        panel_botones.addWidget(self.lbl_estado)
-        panel_botones.addSpacing(20)
-        panel_botones.addWidget(self.btn_nueva_orden)
-        panel_botones.addWidget(self.btn_procesar)
-        panel_botones.addWidget(self.btn_cancelar)
-        panel_botones.addWidget(self.btn_refrescar)
+        self.btn_facturar.setEnabled(False)
+        self.btn_cancelar_venta.setEnabled(False)
+
+        panel_botones.addWidget(self.lbl_cliente_actual)
+        panel_botones.addWidget(self.lbl_receta_actual)
+        panel_botones.addSpacing(12)
+        panel_botones.addWidget(self.btn_nueva_venta)
+        panel_botones.addWidget(self.btn_facturar)
+        panel_botones.addWidget(self.btn_cancelar_venta)
         panel_botones.addStretch()
 
         # =====================================
-        # COLUMNA DERECHA: TABLAS
+        # COLUMNA DERECHA — TABLAS
         # =====================================
         panel_tablas = QVBoxLayout()
 
-        # 1. Carrito de Compras de la Orden Activa
-        grupo_ordenes = QGroupBox("Carrito de Compras (Orden Activa)")
-        layout_ordenes = QVBoxLayout()
+        # -------------------------------------
+        # TABLA 1: PEDIDO DEL CLIENTE ACTUAL
+        # -------------------------------------
+        grupo_pedido = QGroupBox("Pedido del Cliente Actual")
+        layout_pedido = QVBoxLayout()
 
-        self.tabla_ordenes = QTableWidget()
-        self.tabla_ordenes.setColumnCount(4)
-        self.tabla_ordenes.setHorizontalHeaderLabels([
-            "Ítem",
-            "Código Lote",
-            "Cantidad",
-            "Estado"
-        ])
-        self.tabla_ordenes.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        layout_ordenes.addWidget(self.tabla_ordenes)
-        grupo_ordenes.setLayout(layout_ordenes)
-
-        # 2. Inventario Disponible para Venta
-        grupo_productos = QGroupBox("Inventario de Insumos / Medicamentos Disponibles")
-        layout_productos = QVBoxLayout()
-
-        self.tabla_productos = QTableWidget()
-        self.tabla_productos.setColumnCount(6)
-        self.tabla_productos.setHorizontalHeaderLabels([
-            "Medicamento / Lote",
-            "Temperatura",
-            "Fecha Venc.",
-            "Stock",
+        self.tabla_pedido = QTableWidget()
+        self.tabla_pedido.setColumnCount(4)
+        self.tabla_pedido.setHorizontalHeaderLabels([
+            "Producto",
+            "Cantidad solicitada",
             "Estado",
             "Acción"
         ])
+        header_pedido = self.tabla_pedido.horizontalHeader()
+        header_pedido.setSectionResizeMode(0, QHeaderView.Stretch)
+        header_pedido.setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        header_pedido.setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        header_pedido.setSectionResizeMode(3, QHeaderView.ResizeToContents)
+
+        layout_pedido.addWidget(self.tabla_pedido)
+        grupo_pedido.setLayout(layout_pedido)
+
+        # -------------------------------------
+        # TABLA 2: INVENTARIO DISPONIBLE (solo lectura)
+        # -------------------------------------
+        grupo_productos = QGroupBox("Inventario Disponible")
+        layout_productos = QVBoxLayout()
+
+        self.tabla_productos = QTableWidget()
+        self.tabla_productos.setColumnCount(5)
+        self.tabla_productos.setHorizontalHeaderLabels([
+            "Producto",
+            "Laboratorio",
+            "Fecha Cad.",
+            "Estado",
+            "Stock"
+        ])
         self.tabla_productos.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+
         layout_productos.addWidget(self.tabla_productos)
         grupo_productos.setLayout(layout_productos)
 
-        panel_tablas.addWidget(grupo_ordenes, 2)
-        panel_tablas.addWidget(grupo_productos, 3)
+        panel_tablas.addWidget(grupo_pedido, 2)
+        panel_tablas.addWidget(grupo_productos, 1)
 
-        # Configurar Layout Principal
+        # =====================================
         layout_principal.addLayout(panel_botones, 1)
-        layout_principal.addLayout(panel_tablas, 4)
+        layout_principal.addLayout(panel_tablas, 5)
 
         # Eventos
-        self.btn_nueva_orden.clicked.connect(self.abrir_nueva_orden)
-        self.btn_procesar.clicked.connect(self.abrir_procesar_orden)
-        self.btn_cancelar.clicked.connect(self.cancelar_orden_activa)
-        self.btn_refrescar.clicked.connect(self.cargar_inventario)
+        self.btn_nueva_venta.clicked.connect(self.iniciar_nueva_venta)
+        self.btn_facturar.clicked.connect(self.facturar_venta)
+        self.btn_cancelar_venta.clicked.connect(self.cancelar_venta_actual)
 
-    # =====================================
-    # LÓGICA DE NEGOCIO Y API
-    # =====================================
+    # ==================================================
+    # MÉTODOS DE DATOS Y CONEXIONES API
+    # ==================================================
+
+    def iniciar_nueva_venta(self):
+        if self.venta_actual_id:
+            QMessageBox.warning(
+                self, "Venta en curso",
+                "Ya hay una venta activa. Factúrela o cancélela antes de atender a un nuevo cliente."
+            )
+            return
+
+        res = ClienteOperaciones.atender_cliente()
+        if not res["exito"]:
+            QMessageBox.critical(self, "Error", f"No se pudo atender al cliente:\n{res.get('error')}")
+            return
+
+        venta = res["datos"]
+        self.venta_actual_id = venta["id"]
+
+        self.lbl_cliente_actual.setText(
+            f"Cliente: {venta['id_cliente']}\nOrden: {venta['codigo_venta']}"
+        )
+
+        if venta.get("requiere_receta"):
+            self.lbl_receta_actual.setText(
+                f"⚠ Pedido con receta {venta.get('tipo_receta', '').lower()}.\n"
+                "Se derivará automáticamente al Auxiliar Diplomado al facturar."
+            )
+        else:
+            self.lbl_receta_actual.setText("")
+
+        self.btn_facturar.setEnabled(True)
+        self.btn_cancelar_venta.setEnabled(True)
+
+        self.cargar_pedido_actual()
+
+    def cargar_pedido_actual(self):
+        if not self.venta_actual_id:
+            return
+
+        res = ClienteOperaciones.obtener_pedido_solicitado(self.venta_actual_id)
+        if not res["exito"]:
+            QMessageBox.critical(self, "Error", f"No se pudo cargar el pedido:\n{res.get('error')}")
+            return
+
+        datos = res["datos"]
+        self.pedido_actual = datos.get("productos_solicitados", [])
+        self.tabla_pedido.setRowCount(len(self.pedido_actual))
+
+        for fila, linea in enumerate(self.pedido_actual):
+            self.tabla_pedido.setItem(fila, 0, QTableWidgetItem(str(linea.get("nombre", ""))))
+            self.tabla_pedido.setItem(fila, 1, QTableWidgetItem(str(linea.get("cantidad_solicitada", 0))))
+
+            cubierto = linea.get("cubierto", False)
+            estado_texto = "En carrito" if cubierto else "Pendiente"
+            self.tabla_pedido.setItem(fila, 2, QTableWidgetItem(estado_texto))
+
+            boton = QPushButton("Agregar al carrito")
+            boton.setEnabled(not cubierto)
+            producto_id = linea.get("producto_id")
+            cantidad = linea.get("cantidad_solicitada")
+            boton.clicked.connect(
+                lambda _, pid=producto_id, cant=cantidad: self.agregar_al_carrito(pid, cant)
+            )
+            self.tabla_pedido.setCellWidget(fila, 3, boton)
+
+    def agregar_al_carrito(self, producto_id, cantidad):
+        if not self.venta_actual_id:
+            return
+
+        res = ClienteOperaciones.agregar_producto_pedido(self.venta_actual_id, producto_id, cantidad)
+        if res["exito"]:
+            # El stock recién cambió: se refrescan ambas tablas automáticamente,
+            # sin que el Técnico tenga que presionar nada manual.
+            self.cargar_pedido_actual()
+            self.cargar_inventario()
+        else:
+            QMessageBox.warning(
+                self, "Sin stock disponible",
+                f"No se pudo agregar el producto al carrito:\n{res.get('error')}"
+            )
 
     def cargar_inventario(self):
         res = ClienteMonitoreo.obtener_productos_disponibles()
@@ -125,139 +211,79 @@ class OrdenesView(QWidget):
             QMessageBox.critical(self, "Error", f"No se pudo cargar el inventario: {res.get('error')}")
             return
 
-        self.lotes_disponibles = res["datos"]
-        
-        self.tabla_productos.setRowCount(len(self.lotes_disponibles))
+        self.productos_disponibles = res["datos"]
+        self.tabla_productos.setRowCount(len(self.productos_disponibles))
 
-        for fila, lote in enumerate(self.lotes_disponibles):
+        for fila, lote in enumerate(self.productos_disponibles):
             prod_name = lote.get("producto", {}).get("nombre", "Desconocido")
-            temp_env = lote.get("producto", {}).get("indicacion_ambiental", "AMBIENTE")
-            temp = "21°C (Ambiente)" if temp_env == "AMBIENTE" else "4°C (Refrigerado)"
-            cod_lote = lote.get("codigo_lote", "")
-            stock = lote.get("cantidad", 0)
+            lab_name = lote.get("laboratorio", {}).get("nombre", "—") if lote.get("laboratorio") else "—"
 
-            self.tabla_productos.setItem(fila, 0, QTableWidgetItem(f"{prod_name}\nLote: {cod_lote}"))
-            self.tabla_productos.setItem(fila, 1, QTableWidgetItem(str(temp)))
+            self.tabla_productos.setItem(fila, 0, QTableWidgetItem(str(prod_name)))
+            self.tabla_productos.setItem(fila, 1, QTableWidgetItem(str(lab_name)))
             self.tabla_productos.setItem(fila, 2, QTableWidgetItem(str(lote.get("fecha_caducidad", ""))))
-            self.tabla_productos.setItem(fila, 3, QTableWidgetItem(str(stock)))
-            self.tabla_productos.setItem(fila, 4, QTableWidgetItem(str(lote.get("estado", ""))))
+            self.tabla_productos.setItem(fila, 3, QTableWidgetItem(str(lote.get("estado", ""))))
+            self.tabla_productos.setItem(fila, 4, QTableWidgetItem(str(lote.get("cantidad", 0))))
 
-            # Botón para agregar al carro
-            boton = QPushButton("Agregar")
-            # Habilitado únicamente si hay una orden activa
-            boton.setEnabled(self.venta_activa is not None)
-            
-            # Pasar parámetros necesarios
-            lote_id = lote.get("id")
-            boton.clicked.connect(
-                lambda _, lid=lote_id, lcode=cod_lote, pname=prod_name, sdisp=stock: 
-                    self.abrir_agregar_item(lid, lcode, pname, sdisp)
+    def facturar_venta(self):
+        if not self.venta_actual_id:
+            return
+
+        pendientes = [linea for linea in self.pedido_actual if not linea.get("cubierto")]
+        if pendientes:
+            confirmar = QMessageBox.question(
+                self, "Pedido incompleto",
+                f"Quedan {len(pendientes)} producto(s) del pedido sin agregar al carrito.\n"
+                "¿Desea facturar igual solo con lo ya agregado?",
+                QMessageBox.Yes | QMessageBox.No
             )
-            self.tabla_productos.setCellWidget(fila, 5, boton)
+            if confirmar != QMessageBox.Yes:
+                return
 
-    def abrir_nueva_orden(self):
-        self.ventana_nueva_orden = NuevaOrdenView(callback_exito=self.iniciar_venta_ui)
-        self.ventana_nueva_orden.show()
+        # No se pregunta nada sobre receta: el backend ya sabe si esta
+        # venta la requiere desde que el cliente fue atendido.
+        res = ClienteOperaciones.finalizar_facturacion(self.venta_actual_id)
+        if res["exito"]:
+            datos = res["datos"]
+            if datos.get("derivado_a_recetas"):
+                QMessageBox.information(
+                    self, "Venta facturada",
+                    "Venta completada. El pedido fue derivado automáticamente "
+                    "a la cola del Auxiliar Diplomado para su elaboración/dispensación."
+                )
+            else:
+                QMessageBox.information(self, "Venta facturada", "Venta completada correctamente.")
+            self._cerrar_venta_actual()
+        else:
+            QMessageBox.critical(self, "Error", f"No se pudo facturar la venta:\n{res.get('error')}")
 
-    def iniciar_venta_ui(self, datos_venta):
-        self.venta_activa = datos_venta
-        self.carrito_items = []
-        self.actualizar_estado_carro()
-        self.cargar_inventario()
-
-    def abrir_agregar_item(self, lote_id, lote_cod, prod_nombre, stock_disp):
-        if not self.venta_activa:
-            QMessageBox.warning(self, "Validación", "Debe iniciar una nueva venta primero.")
-            return
-
-        self.ventana_agregar = AgregarItemView(
-            id_venta=self.venta_activa.get("id"),
-            lote_id=lote_id,
-            lote_cod=lote_cod,
-            prod_nombre=prod_nombre,
-            stock_disp=stock_disp,
-            callback_exito=lambda lote_final, cant: self.registrar_item_carrito_local(prod_nombre, lote_final, cant)
-        )
-        self.ventana_agregar.show()
-
-    def registrar_item_carrito_local(self, prod_nombre, lote_cod, cantidad):
-        self.cargar_inventario()
-        self.recargar_carrito_visual(prod_nombre, lote_cod, cantidad)
-
-    def recargar_carrito_visual(self, prod_nombre, lote_cod_agregado, cantidad):
-        encontrado = False
-        for item in self.carrito_items:
-            if item["lote_cod"] == lote_cod_agregado:
-                item["cantidad"] += cantidad
-                encontrado = True
-                break
-        
-        if not encontrado:
-            self.carrito_items.append({
-                "index": len(self.carrito_items) + 1,
-                "producto": prod_nombre,
-                "lote_cod": lote_cod_agregado,
-                "cantidad": cantidad,
-                "estado": "Cargado en Carro"
-            })
-            
-        self.tabla_ordenes.setRowCount(len(self.carrito_items))
-        for fila, item in enumerate(self.carrito_items):
-            self.tabla_ordenes.setItem(fila, 0, QTableWidgetItem(str(item['producto'])))
-            self.tabla_ordenes.setItem(fila, 1, QTableWidgetItem(str(item['lote_cod'])))
-            self.tabla_ordenes.setItem(fila, 2, QTableWidgetItem(str(item['cantidad'])))
-            self.tabla_ordenes.setItem(fila, 3, QTableWidgetItem(str(item['estado'])))
-
-    def abrir_procesar_orden(self):
-        if not self.venta_activa:
-            QMessageBox.warning(self, "Validación", "No hay ninguna orden activa para procesar.")
-            return
-
-        self.ventana_procesar = ProcesarOrdenView(
-            id_venta=self.venta_activa.get("id"),
-            callback_exito=self.finalizar_venta_ui
-        )
-        self.ventana_procesar.show()
-
-    def finalizar_venta_ui(self):
-        self.venta_activa = None
-        self.carrito_items = []
-        self.tabla_ordenes.setRowCount(0)
-        self.actualizar_estado_carro()
-        self.cargar_inventario()
-
-    def cancelar_orden_activa(self):
-        if not self.venta_activa:
+    def cancelar_venta_actual(self):
+        if not self.venta_actual_id:
             return
 
         confirmar = QMessageBox.question(
-            self, "Confirmar Cancelación", 
-            "¿Está seguro de que desea cancelar esta orden? El stock físico será devuelto al inventario disponible.",
+            self, "Confirmar Cancelación",
+            "¿Está seguro de que desea cancelar esta venta? El stock ya agregado al carrito se restituirá.",
             QMessageBox.Yes | QMessageBox.No
         )
-        if confirmar == QMessageBox.Yes:
-            res = ClienteOperaciones.cancelar_venta(self.venta_activa.get("id"))
-            if res["exito"]:
-                QMessageBox.information(self, "Éxito", "Venta cancelada y stock devuelto.")
-                self.finalizar_venta_ui()
-            else:
-                QMessageBox.critical(self, "Error", f"No se pudo cancelar la venta: {res.get('error')}")
+        if confirmar != QMessageBox.Yes:
+            return
 
-    def actualizar_estado_carro(self):
-        if self.venta_activa:
-            codigo = self.venta_activa.get("codigo_venta", "ORD-XXXX")
-            cliente = self.venta_activa.get("id_cliente", "CLI-XXXX")
-            self.lbl_estado.setText(f"Orden: {codigo}\nCliente: {cliente}")
-            self.lbl_estado.setStyleSheet("font-weight: bold; color: #55ff55; font-size: 14px;")
-            self.btn_procesar.setEnabled(True)
-            self.btn_cancelar.setEnabled(True)
-            self.btn_nueva_orden.setEnabled(False)
+        res = ClienteOperaciones.cancelar_venta(self.venta_actual_id)
+        if res["exito"]:
+            QMessageBox.information(self, "Venta cancelada", "La transacción fue revertida y el stock restituido.")
+            self._cerrar_venta_actual()
         else:
-            self.lbl_estado.setText("Sin Orden Activa")
-            self.lbl_estado.setStyleSheet("font-weight: bold; color: #ff5555; font-size: 14px;")
-            self.btn_procesar.setEnabled(False)
-            self.btn_cancelar.setEnabled(False)
-            self.btn_nueva_orden.setEnabled(True)
+            QMessageBox.critical(self, "Error", f"No se pudo cancelar la venta:\n{res.get('error')}")
+
+    def _cerrar_venta_actual(self):
+        self.venta_actual_id = None
+        self.pedido_actual = []
+        self.tabla_pedido.setRowCount(0)
+        self.lbl_cliente_actual.setText("Sin venta activa")
+        self.lbl_receta_actual.setText("")
+        self.btn_facturar.setEnabled(False)
+        self.btn_cancelar_venta.setEnabled(False)
+        self.cargar_inventario()
 
 
 if __name__ == "__main__":
@@ -265,6 +291,8 @@ if __name__ == "__main__":
     from PySide6.QtWidgets import QApplication
 
     app = QApplication(sys.argv)
+
     ventana = OrdenesView()
     ventana.show()
+
     sys.exit(app.exec())

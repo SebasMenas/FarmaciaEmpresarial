@@ -1,102 +1,104 @@
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
+    QFormLayout,
     QLabel,
     QLineEdit,
+    QSpinBox,
+    QDateEdit,
     QPushButton,
     QMessageBox,
 )
-from api.cliente_monitoreo import ClienteMonitoreo
+from PySide6.QtCore import QDate
+from api.AdminConsultas import ClienteMonitoreo
 
 
 class SolicitarProductoView(QWidget):
+    """
+    Formulario para que el Admin solicite un producto NUEVO en el catálogo.
+
+    El Admin solo indica el nombre del producto, una cantidad fija de
+    ingreso y la fecha de caducidad de ese primer lote. La ficha técnica
+    (componente activo, concentración, tipo de producto e indicación
+    ambiental) la determina el backend automáticamente, y el laboratorio
+    proveedor se asigna reutilizando uno certificado existente: ninguno
+    de esos datos los inventa quien solicita el abastecimiento.
+    """
+
     def __init__(self, callback_exito=None):
         super().__init__()
 
         self.callback_exito = callback_exito
-        self.setWindowTitle("Registrar Nuevo Producto")
-        self.resize(400, 300)
+        self.setWindowTitle("Solicitar Nuevo Producto")
+        self.resize(400, 260)
 
         layout = QVBoxLayout()
 
-        # Nombre del producto
         self.input_nombre = QLineEdit()
-        self.input_nombre.setPlaceholderText("Nombre del producto")
+        self.input_nombre.setPlaceholderText("Ej: Amoxicilina")
 
-        # Stock mínimo
-        self.input_stock_min = QLineEdit()
-        self.input_stock_min.setPlaceholderText("Stock mínimo (ej: 10)")
-        self.input_stock_min.setText("0")  # Valor por defecto
+        self.spin_cantidad = QSpinBox()
+        self.spin_cantidad.setRange(1, 100000)
+        self.spin_cantidad.setValue(100)
 
-        # Stock máximo
-        self.input_stock_max = QLineEdit()
-        self.input_stock_max.setPlaceholderText("Stock máximo (ej: 100)")
+        self.date_caducidad = QDateEdit()
+        self.date_caducidad.setCalendarPopup(True)
+        self.date_caducidad.setDate(QDate.currentDate().addYears(1))
 
-        # Botón
-        self.btn_registrar = QPushButton("Registrar Producto")
+        form = QFormLayout()
+        form.addRow("Nombre del producto", self.input_nombre)
+        form.addRow("Cantidad de ingreso", self.spin_cantidad)
+        form.addRow("Fecha de caducidad", self.date_caducidad)
 
-        layout.addWidget(QLabel("Nombre del Producto"))
-        layout.addWidget(self.input_nombre)
+        self.lbl_nota = QLabel(
+            "La ficha técnica (componente activo, tipo e indicación\n"
+            "ambiental) y el laboratorio proveedor se asignan\n"
+            "automáticamente al registrar el producto."
+        )
+        self.lbl_nota.setWordWrap(True)
 
-        layout.addWidget(QLabel("Stock Mínimo"))
-        layout.addWidget(self.input_stock_min)
+        self.btn_solicitar = QPushButton("Solicitar Producto")
 
-        layout.addWidget(QLabel("Stock Máximo"))
-        layout.addWidget(self.input_stock_max)
-
+        layout.addLayout(form)
+        layout.addWidget(self.lbl_nota)
         layout.addStretch()
-        layout.addWidget(self.btn_registrar)
+        layout.addWidget(self.btn_solicitar)
 
         self.setLayout(layout)
 
-        self.btn_registrar.clicked.connect(self.registrar_producto)
+        self.btn_solicitar.clicked.connect(self.solicitar_producto)
 
-    def registrar_producto(self):
+    def solicitar_producto(self):
         nombre = self.input_nombre.text().strip()
-        stock_min_str = self.input_stock_min.text().strip()
-        stock_max_str = self.input_stock_max.text().strip()
+        cantidad_inicial = self.spin_cantidad.value()
+        fecha_caducidad = self.date_caducidad.date().toString("yyyy-MM-dd")
 
-        if not nombre or not stock_max_str:
-            QMessageBox.warning(self, "Validación", "Debe ingresar el nombre del producto y el stock máximo.")
-            return
-
-        if stock_min_str and not stock_min_str.isdigit():
-            QMessageBox.warning(self, "Validación", "El stock mínimo debe ser un número entero válido.")
-            return
-
-        if not stock_max_str.isdigit():
-            QMessageBox.warning(self, "Validación", "El stock máximo debe ser un número entero válido.")
-            return
-
-        stock_min = int(stock_min_str) if stock_min_str else 0
-        stock_max = int(stock_max_str)
-
-        if stock_min < 0:
-            QMessageBox.warning(self, "Validación", "El stock mínimo no puede ser negativo.")
-            return
-
-        if stock_max <= 0:
-            QMessageBox.warning(self, "Validación", "El stock máximo debe ser mayor a cero.")
-            return
-
-        if stock_max <= stock_min:
-            QMessageBox.warning(self, "Validación", "El stock máximo debe ser mayor que el stock mínimo.")
+        if not nombre:
+            QMessageBox.warning(self, "Validación", "Debe ingresar el nombre del producto.")
             return
 
         datos = {
             "nombre": nombre,
-            "stock_min": stock_min,
-            "stock_max": stock_max
+            "cantidad_inicial": cantidad_inicial,
+            "fecha_caducidad": fecha_caducidad,
         }
 
         res = ClienteMonitoreo.registrar_producto(datos)
         if res["exito"]:
+            cuerpo = res["datos"]
+            ficha = cuerpo.get("ficha_tecnica_generada", {})
             QMessageBox.information(
-                self, "Registro Exitoso",
-                f"Producto '{nombre}' registrado correctamente."
+                self, "Producto Registrado",
+                f"Producto '{nombre}' registrado exitosamente.\n\n"
+                f"Lote inicial: {cuerpo.get('codigo_lote', '—')}\n"
+                f"Laboratorio: {cuerpo.get('laboratorio', '—')}\n\n"
+                f"Ficha técnica generada:\n"
+                f"Componente activo: {ficha.get('componente_activos', '—')}\n"
+                f"Tipo: {ficha.get('tipo_producto', '—')}\n"
+                f"Indicación ambiental: {ficha.get('indicacion_ambiental', '—')}"
             )
             if self.callback_exito:
                 self.callback_exito()
             self.close()
         else:
-            QMessageBox.critical(self, "Error", res.get("error", "Error al registrar el producto."))
+            QMessageBox.critical(self, "Error", str(res.get("error", "No se pudo registrar el producto.")))

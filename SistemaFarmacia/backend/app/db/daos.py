@@ -1,11 +1,12 @@
 from typing import Optional, List, Dict, Any
 from sqlalchemy.orm import Session, defer
-from sqlalchemy import func
+from sqlalchemy import func, case
 from datetime import date, timedelta
+import random
 from app.models.entidades import (
-    Usuario, Lote, Producto, CapacidadAlmacen, 
+    Usuario, Lote, Producto, Laboratorio, ZonaAlmacen,
     Tarea, Venta, ItemVenta, RecetaMagistral,
-    EstadoLote, EstadoReceta, EstadoVenta, IndicacionAmbiental
+    EstadoLote, EstadoReceta, EstadoVenta, IndicacionAmbiental, CausaBloqueo
 )
 
 class UsuarioDAO:
@@ -46,6 +47,73 @@ class UsuarioDAO:
         db.commit()
         db.refresh(usuario)
         return usuario
+
+class CatalogoDAO:
+    """
+    Capa de acceso para el catálogo de Producto y Laboratorio, independiente
+    del estado físico del inventario. Permite consultar/reabastecer un
+    producto incluso si todavía no tiene ningún lote ingresado, y reutilizar
+    laboratorios certificados existentes en vez de crear uno por cada pedido.
+    """
+
+    @staticmethod
+    def listar_productos(db: Session) -> List[Dict[str, Any]]:
+        """
+        Devuelve cada producto del catálogo junto a su stock total agregado
+        (suma de Lote.cantidad en estados operativos). Usa LEFT JOIN para que
+        productos sin ningún lote todavía aparezcan igual, con stock_total=0.
+        """
+        estados_operativos = [
+            EstadoLote.DISPONIBLE, EstadoLote.PROXIMO_A_VENCER,
+            EstadoLote.RESERVADO_VENTA, EstadoLote.RESERVADO_MANUFACTURA
+        ]
+        filas = db.query(
+            Producto,
+            func.coalesce(
+                func.sum(
+                    case((Lote.estado.in_(estados_operativos), Lote.cantidad), else_=0)
+                ), 0
+            ).label("stock_total")
+        ).outerjoin(Lote, Lote.producto_id == Producto.id).group_by(Producto.id).all()
+
+        resultados = []
+        for producto, stock_total in filas:
+            resultados.append({
+                "id": producto.id,
+                "nombre": producto.nombre,
+                "componente_activos": producto.componente_activos,
+                "concentracion": producto.concentracion,
+                "tipo_producto": producto.tipo_producto,
+                "indicacion_ambiental": producto.indicacion_ambiental,
+                "stock_total": int(stock_total),
+            })
+        return resultados
+
+    @staticmethod
+    def obtener_producto_por_nombre(db: Session, nombre: str) -> Optional[Producto]:
+        return db.query(Producto).filter(func.lower(Producto.nombre) == nombre.strip().lower()).first()
+
+    @staticmethod
+    def listar_laboratorios(db: Session) -> List[Laboratorio]:
+        return db.query(Laboratorio).all()
+
+    @staticmethod
+    def obtener_o_crear_laboratorio_certificado(db: Session) -> Laboratorio:
+        """
+        Reutiliza un laboratorio certificado ya existente en vez de crear
+        uno nuevo en cada solicitud de reabastecimiento. Solo crea uno
+        nuevo si la tabla está completamente vacía (primer arranque del
+        sistema), evitando que 'laboratorios' crezca sin control.
+        """
+        laboratorio = db.query(Laboratorio).filter(Laboratorio.certificado == True).first()
+        if laboratorio:
+            return laboratorio
+
+        nuevo = Laboratorio(nombre=f"Laboratorio Bio_{random.randint(100, 999)}", certificado=True)
+        db.add(nuevo)
+        db.flush()
+        return nuevo
+
 
 class InventarioDAO:
     @staticmethod
@@ -88,43 +156,149 @@ class InventarioDAO:
 
     @staticmethod
     def calcular_capacidad_por_zona(db: Session) -> List[Dict[str, Any]]:
-        """Calcula el volumen de ocupación agrupando los lotes por requerimiento ambiental."""
-        capacidades = db.query(CapacidadAlmacen).all()
-        
-        ocupacion = db.query(
-            Producto.indicacion_ambiental,
-            func.sum(Lote.cantidad).label("total_unidades")
-        ).join(Lote, Lote.producto_id == Producto.id).filter(
-            Lote.estado.in_([
-                EstadoLote.DISPONIBLE, EstadoLote.PROXIMO_A_VENCER, 
-                EstadoLote.RESERVADO_VENTA, EstadoLote.RESERVADO_MANUFACTURA, 
-                EstadoLote.CUARENTENA, EstadoLote.BLOQUEADO
-            ])
-        ).group_by(Producto.indicacion_ambiental).all()
+        """Calcula la ocupación real de cada una de las 4 zonas físicas."""
+        zonas = db.query(ZonaAlmacen).order_by(ZonaAlmacen.codigo).all()
 
-        mapa_ocupacion = {zona: total or 0 for zona, total in ocupacion}
-        
+        estados_operativos = [
+            EstadoLote.DISPONIBLE, EstadoLote.PROXIMO_A_VENCER,
+            EstadoLote.RESERVADO_VENTA, EstadoLote.RESERVADO_MANUFACTURA,
+            EstadoLote.CUARENTENA, EstadoLote.BLOQUEADO
+        ]
+        ocupacion = db.query(
+            Lote.zona_id,
+            func.sum(Lote.cantidad).label("total_unidades")
+        ).filter(
+            Lote.zona_id.isnot(None),
+            Lote.estado.in_(estados_operativos)
+        ).group_by(Lote.zona_id).all()
+
+        mapa_ocupacion = {zona_id: total or 0 for zona_id, total in ocupacion}
+
         resultados = []
-        for cap in capacidades:
+        for zona in zonas:
+            ocupacion_actual = mapa_ocupacion.get(zona.id, 0)
             resultados.append({
-                "zona": cap.zona,
-                "capacidad_maxima_unidades": cap.capacidad_maxima_unidades,
-                "ocupacion_actual": mapa_ocupacion.get(cap.zona, 0)
+                "id": zona.id,
+                "codigo": zona.codigo,
+                "tipo_ambiental": zona.tipo_ambiental,
+                "capacidad_maxima_unidades": zona.capacidad_maxima_unidades,
+                "ocupacion_actual": ocupacion_actual,
+                "espacio_disponible": max(0, zona.capacidad_maxima_unidades - ocupacion_actual),
             })
         return resultados
-    
+
     @staticmethod
-    def upsert_capacidad_zona(db: Session, zona: IndicacionAmbiental, capacidad: int) -> CapacidadAlmacen:
-        """Inserta o actualiza el techo de capacidad física para una zona específica."""
-        registro = db.query(CapacidadAlmacen).filter(CapacidadAlmacen.zona == zona).first()
-        if registro:
-            registro.capacidad_maxima_unidades = capacidad
-        else:
-            registro = CapacidadAlmacen(zona=zona, capacidad_maxima_unidades=capacidad)
-            db.add(registro)
+    def listar_zonas(db: Session) -> List[ZonaAlmacen]:
+        return db.query(ZonaAlmacen).order_by(ZonaAlmacen.codigo).all()
+
+    @staticmethod
+    def actualizar_capacidad_zona(db: Session, zona_id: int, capacidad: int) -> Optional[ZonaAlmacen]:
+        """Recalibra el techo de capacidad física de una zona ya existente."""
+        zona = db.query(ZonaAlmacen).filter(ZonaAlmacen.id == zona_id).first()
+        if not zona:
+            return None
+        zona.capacidad_maxima_unidades = capacidad
         db.commit()
-        db.refresh(registro)
-        return registro
+        db.refresh(zona)
+        return zona
+
+    @staticmethod
+    def calcular_ocupacion_zona(db: Session, zona_id: int, excluir_lote_id: int | None = None) -> int:
+        """
+        Suma la cantidad de todos los lotes operativos asignados a una zona.
+
+        excluir_lote_id permite calcular "cuánto ocupan los DEMÁS lotes",
+        necesario cuando se está validando si el propio lote (que ya tiene
+        esa zona asignada) cabe al reasignarlo: sin excluirlo, su propia
+        cantidad se contaría dos veces y generaría capacidad falsa.
+        """
+        estados_operativos = [
+            EstadoLote.DISPONIBLE, EstadoLote.PROXIMO_A_VENCER,
+            EstadoLote.RESERVADO_VENTA, EstadoLote.RESERVADO_MANUFACTURA,
+            EstadoLote.CUARENTENA, EstadoLote.BLOQUEADO
+        ]
+        query = db.query(func.sum(Lote.cantidad)).filter(
+            Lote.zona_id == zona_id,
+            Lote.estado.in_(estados_operativos)
+        )
+        if excluir_lote_id is not None:
+            query = query.filter(Lote.id != excluir_lote_id)
+        total = query.scalar()
+        return total or 0
+
+    @staticmethod
+    def asignar_zona_lote(db: Session, lote: Lote, zona: ZonaAlmacen) -> Dict[str, Any]:
+        """
+        Intenta asignar un lote a una zona física, validando que haya espacio.
+        Si cabe, el lote queda DISPONIBLE en esa zona. Si no cabe, el lote
+        queda BLOQUEADO con causa_bloqueo=SIN_ESPACIO_ZONA, registrando la
+        zona deseada para que el mecanismo de liberación automática lo
+        reintente cuando una venta u otra salida abra espacio.
+
+        Si el lote YA está en esa misma zona, retorna {"ya_en_zona": True}
+        sin tocar nada — evita sumar su propia cantidad dos veces a la
+        ocupación calculada (capacidad falsa) y evita un movimiento sin
+        efecto real. El llamador (endpoint) decide si avisa al usuario.
+
+        Retorna {"asignado": bool, "lote": Lote, "ya_en_zona": bool}.
+        """
+        if lote.zona_id == zona.id:
+            return {"asignado": True, "lote": lote, "ya_en_zona": True}
+
+        # Se excluye el propio lote del cálculo de ocupación: si venía de
+        # otra zona, su cantidad no debe contarse en la zona destino hasta
+        # que la asignación se confirme.
+        ocupacion_actual = InventarioDAO.calcular_ocupacion_zona(db, zona.id, excluir_lote_id=lote.id)
+
+        if ocupacion_actual + lote.cantidad <= zona.capacidad_maxima_unidades:
+            lote.zona_id = zona.id
+            lote.estado = EstadoLote.DISPONIBLE
+            lote.causa_bloqueo = None
+            db.commit()
+            db.refresh(lote)
+            return {"asignado": True, "lote": lote, "ya_en_zona": False}
+
+        lote.zona_id = zona.id  # se registra la zona deseada para el reintento automático
+        lote.estado = EstadoLote.BLOQUEADO
+        lote.causa_bloqueo = CausaBloqueo.SIN_ESPACIO_ZONA
+        db.commit()
+        db.refresh(lote)
+        return {"asignado": False, "lote": lote, "ya_en_zona": False}
+
+    @staticmethod
+    def liberar_lotes_bloqueados_por_espacio(db: Session) -> List[Lote]:
+        """
+        Revisa los lotes BLOQUEADOS por falta de espacio (no por sospecha de
+        defecto sanitario) y los pasa a DISPONIBLE si, tras una venta u otra
+        salida de stock, ya hay espacio suficiente en su zona pendiente.
+
+        Se debe llamar tras cualquier operación que reduzca Lote.cantidad
+        (factura de venta, manufactura, cancelación con reposición, etc.).
+        Procesa en orden de fecha_ingreso (FIFO) para no favorecer lotes
+        más nuevos sobre los que esperan hace más tiempo.
+        """
+        pendientes = db.query(Lote).filter(
+            Lote.estado == EstadoLote.BLOQUEADO,
+            Lote.causa_bloqueo == CausaBloqueo.SIN_ESPACIO_ZONA,
+            Lote.zona_id.isnot(None)
+        ).order_by(Lote.fecha_ingreso.asc()).all()
+
+        liberados = []
+        for lote in pendientes:
+            ocupacion_actual = InventarioDAO.calcular_ocupacion_zona(db, lote.zona_id)
+            # calcular_ocupacion_zona ya incluye este lote bloqueado en la suma
+            # (BLOQUEADO está en estados_operativos), así que se compara
+            # directamente contra la capacidad sin sumarlo de nuevo.
+            zona = db.query(ZonaAlmacen).filter(ZonaAlmacen.id == lote.zona_id).first()
+            if zona and ocupacion_actual <= zona.capacidad_maxima_unidades:
+                lote.estado = EstadoLote.DISPONIBLE
+                lote.causa_bloqueo = None
+                liberados.append(lote)
+
+        if liberados:
+            db.commit()
+        return liberados
+
 
 class MonitoreoDAO:
     @staticmethod

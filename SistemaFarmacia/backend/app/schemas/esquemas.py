@@ -3,7 +3,7 @@ from datetime import datetime, date
 from typing import Optional, List, Any
 from app.models.entidades import (
     RolUsuario, TipoProducto, IndicacionAmbiental, EstadoLote,
-    EstadoTarea, EstadoVenta, EstadoReceta
+    EstadoTarea, EstadoVenta, EstadoReceta, CausaBloqueo
 )
 
 # --- ESQUEMAS DE AUTENTICACIÓN ---
@@ -26,6 +26,7 @@ class UsuarioDTO(BaseModel):
     rut: str
     rol: RolUsuario
     credencial: Optional[str] = None
+    activo: bool
 
 class LaboratorioDTO(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -39,6 +40,33 @@ class ProductoDTO(BaseModel):
     nombre: str
     tipo_producto: TipoProducto
     indicacion_ambiental: IndicacionAmbiental
+
+class ProductoCatalogoDTO(BaseModel):
+    """
+    Esquema para el catálogo real de productos (GET /admin/productos),
+    independiente de si el producto ya tiene lotes ingresados o no.
+    Permite ver y reabastecer un producto incluso si su stock actual es 0.
+    """
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    nombre: str
+    componente_activos: Optional[str] = None
+    concentracion: Optional[str] = None
+    tipo_producto: TipoProducto
+    indicacion_ambiental: IndicacionAmbiental
+    stock_total: int = Field(default=0, description="Suma de Lote.cantidad en estados operativos, inyectada por el DAO")
+
+class ZonaAlmacenDTO(BaseModel):
+    """
+    Esquema para las 4 zonas físicas fijas del almacén (A, B refrigerado;
+    C, D ambiente). Se usa tanto para listarlas en el selector del
+    Auxiliar Mayor como anidada dentro de LoteMonitoreoDTO.
+    """
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    codigo: str
+    tipo_ambiental: IndicacionAmbiental
+    capacidad_maxima_unidades: int
 
 # --- ESQUEMAS DE OPERACIÓN (NUEVOS) ---
 
@@ -61,8 +89,8 @@ class TareaCreate(BaseModel):
 class TareaEstadoUpdate(BaseModel):
     completada: bool = Field(..., description="Estado del checklist manual")
 
-class CapacidadAlmacenUpdate(BaseModel):
-    zona: IndicacionAmbiental
+class ZonaAlmacenUpdate(BaseModel):
+    """El Admin solo recalibra la capacidad; las 4 zonas ya existen de antemano."""
     capacidad_maxima_unidades: int = Field(..., gt=0, description="Límite físico de la zona")
 
 class ItemVentaDTO(BaseModel):
@@ -81,12 +109,22 @@ class VentaDTO(BaseModel):
     estado: EstadoVenta
     requiere_receta: bool
     tipo_receta: Optional[str] = None
+    descripcion_receta: Optional[str] = None
     items: List[ItemVentaDTO] = []
 
 class VentaResumenDTO(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     codigo_venta: str
     id_cliente: str
+
+class InsumoRecetaRequeridoDTO(BaseModel):
+    """Insumo real requerido por una receta, con su estado de reserva."""
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    producto_id: int
+    cantidad_requerida: int
+    cubierto: bool
+    producto: ProductoDTO
 
 class RecetaMagistralDTO(BaseModel):
     """Esquema para la cola FIFO del Auxiliar Diplomado."""
@@ -98,6 +136,7 @@ class RecetaMagistralDTO(BaseModel):
     ticket_validacion: Optional[str] = None
     fecha_ingreso: datetime
     venta: VentaResumenDTO
+    insumos_requeridos: List[InsumoRecetaRequeridoDTO] = []
     
     # Derivación de datos relacionales requeridos por el frontend
     @computed_field
@@ -108,12 +147,14 @@ class RecetaMagistralDTO(BaseModel):
     def id_cliente(self) -> str:
         return self.venta.id_cliente
     
-class CapacidadAlmacenDTO(BaseModel):
-    """Esquema para el cálculo de capacidad volumétrica (Gráfico 30%)."""
-    model_config = ConfigDict(from_attributes=True)
-    zona: IndicacionAmbiental
+class ZonaCapacidadDTO(BaseModel):
+    """Esquema para el gráfico de capacidad por zona (4 barras: A, B, C, D)."""
+    id: int
+    codigo: str
+    tipo_ambiental: IndicacionAmbiental
     capacidad_maxima_unidades: int
-    ocupacion_actual: Optional[int] = Field(default=0, description="Inyectado dinámicamente por el DAO")
+    ocupacion_actual: int = Field(default=0, description="Inyectado dinámicamente por el DAO")
+    espacio_disponible: int = Field(default=0, description="Inyectado dinámicamente por el DAO")
 
 # --- ESQUEMAS DE MONITOREO (MODIFICADOS) ---
 
@@ -126,8 +167,9 @@ class LoteMonitoreoDTO(BaseModel):
     cantidad: int
     fecha_ingreso: datetime
     fecha_caducidad: date
-    ubicacion_almacen: Optional[str] = None
+    zona: Optional[ZonaAlmacenDTO] = None
     estado: EstadoLote
+    causa_bloqueo: Optional[CausaBloqueo] = None
     producto: ProductoDTO
     laboratorio: LaboratorioDTO
 

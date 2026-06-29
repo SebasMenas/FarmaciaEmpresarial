@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from typing import List
 from app.db.database import get_db
 from app.db.daos import UsuarioDAO, InventarioDAO, MonitoreoDAO
-from app.schemas.esquemas import UsuarioDTO, LoteMonitoreoDTO, CapacidadAlmacenDTO, TareaDTO, TareaCreate, TareaEstadoUpdate, LoteVentaDTO
+from app.schemas.esquemas import UsuarioDTO, LoteMonitoreoDTO, ZonaCapacidadDTO, ZonaAlmacenDTO, TareaDTO, TareaCreate, TareaEstadoUpdate, LoteVentaDTO
 from app.models.entidades import Usuario
 from app.core.dependencias_rbac import requiere_auxiliar_mayor, verificar_token, requiere_acceso_catalogo_venta
 
@@ -27,9 +27,18 @@ def obtener_productos_disponibles(db: Session = Depends(get_db), usuario_auth: d
 def obtener_alertas_caducidad(db: Session = Depends(get_db), usuario_auth: dict = Depends(requiere_auxiliar_mayor)):
     return InventarioDAO.obtener_alertas_caducidad(db, dias_limite=30)
 
-@router.get("/capacidad", response_model=List[CapacidadAlmacenDTO])
+@router.get("/zonas", response_model=List[ZonaAlmacenDTO])
+def listar_zonas_almacen(db: Session = Depends(get_db), usuario_auth: dict = Depends(requiere_auxiliar_mayor)):
+    """
+    Devuelve el catálogo cerrado de las 4 zonas físicas (A, B, C, D) para
+    que el Auxiliar Mayor elija una al asignar un lote, en vez de escribir
+    una ubicación libre que podría duplicarse por error de tipeo.
+    """
+    return InventarioDAO.listar_zonas(db)
+
+@router.get("/capacidad", response_model=List[ZonaCapacidadDTO])
 def obtener_capacidad_volumetrica(db: Session = Depends(get_db), usuario_auth: dict = Depends(requiere_auxiliar_mayor)):
-    """Retorna la agregación porcentual de capacidad instalada versus ocupación actual por zona ambiental."""
+    """Retorna la ocupación real de cada una de las 4 zonas físicas, lista para graficar."""
     return InventarioDAO.calcular_capacidad_por_zona(db)
 
 @router.get("/tareas", response_model=List[TareaDTO])

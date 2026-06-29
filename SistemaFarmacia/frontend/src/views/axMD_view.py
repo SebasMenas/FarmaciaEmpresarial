@@ -25,8 +25,7 @@ from PySide6.QtCharts import (
 )
 
 from PySide6.QtCore import Qt, QDate
-from api.cliente_monitoreo import ClienteMonitoreo
-from api.cliente_operaciones import ClienteOperaciones
+from api.AdminConsultas import ClienteMonitoreo, ClienteOperaciones
 
 
 class auxMayor(QWidget):
@@ -38,6 +37,7 @@ class auxMayor(QWidget):
         self.resize(1600, 900)
 
         self.lotes_cargados = []
+        self.zonas_cargadas = []
         self.lote_seleccionado_id = None
 
         self.inicializar_ui()
@@ -116,21 +116,16 @@ class auxMayor(QWidget):
         self.txt_lote_seleccionado.setReadOnly(True)
         self.txt_lote_seleccionado.setPlaceholderText("Seleccione un lote de la tabla")
 
-        self.cmb_zona_temperatura = QComboBox()
-        self.cmb_zona_temperatura.addItem("Zona Ambiente (21°C)", "AMBIENTE")
-        self.cmb_zona_temperatura.addItem("Zona Refrigeración (4°C)", "REFRIGERADO")
-
-        self.input_ubicacion = QLineEdit()
-        self.input_ubicacion.setPlaceholderText("Ej: Estante A - Nivel 2")
+        self.cmb_zona = QComboBox()
+        # Se puebla dinámicamente en cargar_zonas() con las 4 zonas reales
+        # (A, B refrigerado; C, D ambiente), nunca con texto libre.
 
         self.btn_actualizar = QPushButton("Almacenar Lote")
 
         layout_inv.addWidget(QLabel("Lote Seleccionado"))
         layout_inv.addWidget(self.txt_lote_seleccionado)
-        layout_inv.addWidget(QLabel("Zona Ambiental Destino"))
-        layout_inv.addWidget(self.cmb_zona_temperatura)
-        layout_inv.addWidget(QLabel("Ubicación Física (Coordenada)"))
-        layout_inv.addWidget(self.input_ubicacion)
+        layout_inv.addWidget(QLabel("Zona física destino"))
+        layout_inv.addWidget(self.cmb_zona)
         layout_inv.addWidget(self.btn_actualizar)
         grupo_inventario.setLayout(layout_inv)
 
@@ -171,6 +166,7 @@ class auxMayor(QWidget):
 
     def cargar_datos_iniciales(self):
         self.cargar_empleados()
+        self.cargar_zonas()
         self.cargar_grafico()
         self.cargar_inventario()
         self.cargar_tareas()
@@ -186,6 +182,20 @@ class auxMayor(QWidget):
         else:
             QMessageBox.warning(self, "Advertencia", f"No se pudo cargar la lista de empleados: {res.get('error')}")
 
+    def cargar_zonas(self):
+        """Puebla el selector con las 4 zonas físicas reales (A, B, C, D)."""
+        res = ClienteMonitoreo.listar_zonas()
+        if not res["exito"]:
+            QMessageBox.warning(self, "Advertencia", f"No se pudieron cargar las zonas de almacén: {res.get('error')}")
+            return
+
+        self.zonas_cargadas = res["datos"]
+        self.cmb_zona.clear()
+        for zona in self.zonas_cargadas:
+            etiqueta_ambiente = "Refrigerado (4°C)" if zona["tipo_ambiental"] == "REFRIGERADO" else "Ambiente (21°C)"
+            etiqueta = f"Zona {zona['codigo']} — {etiqueta_ambiente}"
+            self.cmb_zona.addItem(etiqueta, zona["id"])
+
     def cargar_grafico(self):
         res = ClienteMonitoreo.obtener_capacidad()
         if not res["exito"]:
@@ -193,34 +203,26 @@ class auxMayor(QWidget):
 
         datos_capacidad = res["datos"]
         self.chart.removeAllSeries()
-        
+
         for axis in list(self.chart.axes()):
             self.chart.removeAxis(axis)
 
+        # Ordenar por código (A, B, C, D) para que el gráfico sea siempre consistente
+        datos_ordenados = sorted(datos_capacidad, key=lambda z: z.get("codigo", ""))
+
         barras = QBarSet("Ocupación actual (%)")
-        porc_refrig = 0.0
-        porc_amb = 0.0
-
-        for cap in datos_capacidad:
-            zona = cap.get("zona")
-            max_u = cap.get("capacidad_maxima_unidades", 1) or 1
-            act_u = cap.get("ocupacion_actual", 0) or 0
+        categorias = []
+        for zona in datos_ordenados:
+            max_u = zona.get("capacidad_maxima_unidades", 1) or 1
+            act_u = zona.get("ocupacion_actual", 0) or 0
             porcentaje = (act_u / max_u) * 100.0
-            if zona == "REFRIGERADO":
-                porc_refrig = porcentaje
-            elif zona == "AMBIENTE":
-                porc_amb = porcentaje
-
-        barras.append([porc_refrig, porc_amb])
+            barras.append(porcentaje)
+            categorias.append(f"Zona {zona.get('codigo', '?')}")
 
         serie = QBarSeries()
         serie.append(barras)
         self.chart.addSeries(serie)
 
-        categorias = [
-            "Zona Refrigeración (%)",
-            "Zona Ambiente (%)"
-        ]
         eje_x = QBarCategoryAxis()
         eje_x.append(categorias)
         self.chart.addAxis(eje_x, Qt.AlignBottom)
@@ -327,41 +329,68 @@ class auxMayor(QWidget):
             cod_lote = lote.get("codigo_lote", "")
             self.txt_lote_seleccionado.setText(f"{prod_name} (Lote: {cod_lote})")
 
-            # Intentar pre-seleccionar la zona térmica idónea
+            # Preseleccionar la primera zona cuyo tipo ambiental coincida
+            # con la ficha técnica del producto (A o B si es refrigerado,
+            # C o D si es ambiente). El Auxiliar Mayor puede cambiarla
+            # igual entre las dos zonas válidas de ese tipo.
             ind_ambiental = lote.get("producto", {}).get("indicacion_ambiental", "AMBIENTE")
-            index = self.cmb_zona_temperatura.findData(ind_ambiental)
-            if index >= 0:
-                self.cmb_zona_temperatura.setCurrentIndex(index)
-
-            self.input_ubicacion.setText(lote.get("ubicacion_almacen") or "")
+            for indice in range(self.cmb_zona.count()):
+                zona_id_combo = self.cmb_zona.itemData(indice)
+                zona_match = next((z for z in self.zonas_cargadas if z["id"] == zona_id_combo), None)
+                if zona_match and zona_match["tipo_ambiental"] == ind_ambiental:
+                    self.cmb_zona.setCurrentIndex(indice)
+                    break
 
     def almacenar_lote(self):
         if not self.lote_seleccionado_id:
             QMessageBox.warning(self, "Validación", "Debe seleccionar un lote del inventario.")
             return
 
-        ubicacion = self.input_ubicacion.text().strip()
-        zona_temperatura = self.cmb_zona_temperatura.currentData()
-
-        if not ubicacion:
-            QMessageBox.warning(self, "Validación", "Debe ingresar una coordenada de ubicación física.")
+        zona_id = self.cmb_zona.currentData()
+        if not zona_id:
+            QMessageBox.warning(self, "Validación", "Debe seleccionar una zona física destino.")
             return
 
-        datos_ubicacion = {
-            "ubicacion": ubicacion,
-            "temperatura_zona": zona_temperatura
-        }
+        self._intentar_almacenar_lote(zona_id, confirmar=False)
 
-        res = ClienteOperaciones.almacenar_lote(self.lote_seleccionado_id, datos_ubicacion)
+    def _intentar_almacenar_lote(self, zona_id, confirmar):
+        datos_zona = {"zona_id": zona_id, "confirmar": confirmar}
+
+        res = ClienteOperaciones.almacenar_lote(self.lote_seleccionado_id, datos_zona)
         if res["exito"]:
-            QMessageBox.information(self, "Éxito", "Ubicación del lote actualizada correctamente.")
+            QMessageBox.information(self, "Éxito", "Lote almacenado correctamente en la zona seleccionada.")
             self.txt_lote_seleccionado.clear()
-            self.input_ubicacion.clear()
             self.lote_seleccionado_id = None
             self.cargar_inventario()
-            self.cargar_grafico() # Actualizar gráfico de capacidad
-        else:
-            QMessageBox.critical(self, "Alerta Térmica", f"No se pudo almacenar:\n{res.get('error')}")
+            self.cargar_grafico()  # Actualizar gráfico de capacidad de inmediato
+            return
+
+        if res.get("codigo_error") == "LOTE_YA_EN_ZONA":
+            # El lote ya está en esa misma zona: no se modifica capacidad,
+            # se le pregunta al Auxiliar Mayor si de todas formas quiere
+            # confirmar el "movimiento" (sin efecto real, solo para
+            # despejar cualquier duda de que el lote ya está ubicado ahí).
+            confirmado = QMessageBox.question(
+                self, "El lote ya está en esta zona",
+                f"{res.get('error')}\n\n¿Desea confirmar igualmente la ubicación?",
+                QMessageBox.Yes | QMessageBox.No
+            )
+            if confirmado == QMessageBox.Yes:
+                self._intentar_almacenar_lote(zona_id, confirmar=True)
+            return
+
+        # Si la zona está llena, el backend ya bloqueó el lote
+        # (queda en cola para liberarse solo) en vez de simplemente
+        # rechazar la operación sin efecto.
+        QMessageBox.warning(
+            self, "Zona sin espacio disponible",
+            f"{res.get('error')}\n\n"
+            "El lote quedó marcado como BLOQUEADO y se asignará "
+            "automáticamente a esta zona en cuanto se libere espacio "
+            "(por ejemplo, tras una venta que reduzca otro lote de la misma zona)."
+        )
+        self.cargar_inventario()
+        self.cargar_grafico()
 
 
 if __name__ == "__main__":

@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (
     QMessageBox
 )
 
-from api.cliente_monitoreo import ClienteMonitoreo
+from api.AdminConsultas import ClienteMonitoreo
 
 
 class EditarEmpleadoView(QWidget):
@@ -74,32 +74,42 @@ class EditarEmpleadoView(QWidget):
     def cargar_datos(self):
 
         self.input_nombre.setText(
-            self.empleado["nombre"]
+            self.empleado.get("nombre", "")
         )
 
         self.input_apellidos.setText(
-            self.empleado["apellidos"]
+            self.empleado.get("apellidos", "")
         )
 
-        idx = self.cmb_rol.findData(self.empleado.get("rol", ""))
-        if idx >= 0:
-            self.cmb_rol.setCurrentIndex(idx)
+        # Selección por el valor del enum (ADMIN, AUX_MAYOR, ...), no por el
+        # texto visible del combo, que es una etiqueta distinta en español.
+        rol_actual = self.empleado.get("rol", "")
+        indice_rol = self.cmb_rol.findData(rol_actual)
+        if indice_rol >= 0:
+            self.cmb_rol.setCurrentIndex(indice_rol)
 
+        # credencial es opcional en el backend; puede llegar como None
+        # (p. ej. un Técnico sin PIN asignado). setText(None) lanza TypeError.
         self.input_credencial.setText(
             self.empleado.get("credencial") or ""
         )
 
         self.chk_activo.setChecked(
-            self.empleado.get("activo", True)
+            bool(self.empleado.get("activo", True))
         )
 
     def guardar(self):
+
+        # Si el campo de credencial queda vacío, se envía None (no "") para
+        # que el backend, que usa exclude_none=True, lo trate como "sin
+        # cambios" en vez de borrar una credencial ya asignada.
+        credencial_texto = self.input_credencial.text().strip()
 
         datos = {
             "nombre": self.input_nombre.text(),
             "apellidos": self.input_apellidos.text(),
             "rol": self.cmb_rol.currentData(),   # <-- importante
-            "credencial": self.input_credencial.text(),
+            "credencial": credencial_texto if credencial_texto else None,
             "activo": self.chk_activo.isChecked()
         }
 
